@@ -4,12 +4,7 @@ export default function PaymentMethods({ t, lang }) {
     {
       name: 'Zain Cash',
       nameAr: 'زين كاش',
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="12" fill="#E31E24"/>
-          <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="22" fontWeight="bold" fontFamily="Arial">Z</text>
-        </svg>
-      ),
+      image: '/zaincash.png',
     },
     {
       name: 'MasterCard',
@@ -25,22 +20,12 @@ export default function PaymentMethods({ t, lang }) {
     {
       name: 'FIB',
       nameAr: 'المصرف الأول',
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="12" fill="#00A651"/>
-          <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="16" fontWeight="bold" fontFamily="Arial">FIB</text>
-        </svg>
-      ),
+      image: '/fip.png',
     },
     {
       name: 'Asia Hawala',
       nameAr: 'آسيا حوالة',
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="12" fill="#0057A8"/>
-          <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="13" fontWeight="bold" fontFamily="Arial">ASIA</text>
-        </svg>
-      ),
+      image: '/asia.jpg',
     },
   ];
 
@@ -70,7 +55,9 @@ export default function PaymentMethods({ t, lang }) {
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(0,229,255,0.15)'; }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
           >
-            {m.icon}
+            {m.image
+              ? <img src={m.image} alt={m.name} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '12px' }} />
+              : m.icon}
             <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
               {isRtl ? m.nameAr : m.name}
             </span>
