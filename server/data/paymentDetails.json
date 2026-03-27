@@ -1,0 +1,29 @@
+{
+  "updatedAt": "2026-03-27T18:44:13.842Z",
+  "paymentExpiryMinutes": 15,
+  "rateConfig": {
+    "mode": "fixed",
+    "fixedRate": 1353,
+    "floatBase": 1310,
+    "floatOffset": 10
+  },
+  "methods": {
+    "zainCash": {
+      "number": "07714740129",
+      "qrImage": "https://cdn.discordapp.com/attachments/1314732650241462344/1487135761122857241/Screenshot_-.jpg?ex=69c80a9b&is=69c6b91b&hm=aef84bc47778efc57bb3b0ed22f3013471705b9ccb45d07eb2b0b8f376e70d33&"
+    },
+    "asiaHawala": {
+      "number": "077846460680"
+    },
+    "fib": {
+      "accountNumber": "1234567890",
+      "accountName": "TetherIQ Exchange",
+      "qrImage": ""
+    },
+    "mastercard": {
+      "cardNumber": "456456456",
+      "cardHolder": "علي عدنان",
+      "qrImage": "https://api.telegram.org/file/bot8663945518:AAFSEzpqwcEXm-gSyM_sfGkSlyh9LHTDIQY/photos/file_0.jpg"
+    }
+  }
+}
