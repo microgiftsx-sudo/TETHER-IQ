@@ -60,28 +60,28 @@ function CountUp({ target, suffix = '' }) {
 
 const FALLBACK = { customers: 1200, transactions: 3500, years: 3, satisfaction: 99 };
 
+const STAT_KEYS = [
+  { key: 'customers',    iconKey: 'customers',    suffix: '+', labelKey: 'statsCustomers' },
+  { key: 'transactions', iconKey: 'transactions', suffix: '+', labelKey: 'statsTransactions' },
+  { key: 'years',        iconKey: 'years',        suffix: '+', labelKey: 'statsYears' },
+  { key: 'satisfaction', iconKey: 'satisfaction', suffix: '%', labelKey: 'statsSatisfaction' },
+];
+
 export default function TrustStats({ t }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    getStats().then(setData).catch(() => setData(FALLBACK));
+    getStats()
+      .then(d => setData(d))
+      .catch(() => setData(FALLBACK));
   }, []);
-
-  const d = data || FALLBACK;
-
-  const stats = [
-    { key: 'customers',    iconKey: 'customers',    value: d.customers,    suffix: '+', label: t.statsCustomers },
-    { key: 'transactions', iconKey: 'transactions', value: d.transactions, suffix: '+', label: t.statsTransactions },
-    { key: 'years',        iconKey: 'years',        value: d.years,        suffix: '+', label: t.statsYears },
-    { key: 'satisfaction', iconKey: 'satisfaction', value: d.satisfaction, suffix: '%', label: t.statsSatisfaction },
-  ];
 
   return (
     <section style={{ width: '100%', padding: '1.5rem 0' }}>
       <div className="trust-stats-grid" style={{
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem',
       }}>
-        {stats.map((s) => (
+        {STAT_KEYS.map((s) => (
           <div key={s.key} style={{
             background: 'rgba(0,229,255,0.04)',
             border: '1px solid rgba(0,229,255,0.15)',
@@ -94,11 +94,14 @@ export default function TrustStats({ t }) {
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.6rem' }}>
               {ICONS[s.iconKey]}
             </div>
-            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-primary)', lineHeight: 1 }}>
-              {data !== null ? <CountUp target={s.value} suffix={s.suffix} /> : `0${s.suffix}`}
+            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-primary)', lineHeight: 1, minHeight: '1.8rem' }}>
+              {data === null
+                ? <span style={{ display: 'inline-block', width: '60px', height: '1.4rem', borderRadius: '6px', background: 'rgba(0,229,255,0.1)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+                : <CountUp key={`${s.key}-${data[s.key]}`} target={data[s.key]} suffix={s.suffix} />
+              }
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.4rem', fontWeight: 500 }}>
-              {s.label}
+              {t[s.labelKey]}
             </div>
           </div>
         ))}
@@ -106,6 +109,10 @@ export default function TrustStats({ t }) {
       <style>{`
         @media (max-width: 640px) {
           .trust-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 0.9; }
         }
       `}</style>
     </section>
