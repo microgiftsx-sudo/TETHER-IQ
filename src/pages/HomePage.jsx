@@ -22,6 +22,7 @@ export default function HomePage() {
   const toggleLang = () => setLang((prev) => {
     const next = prev === 'ar' ? 'en' : 'ar';
     localStorage.setItem('lang', next);
+    window.dispatchEvent(new CustomEvent('lang-changed', { detail: next }));
     return next;
   });
 

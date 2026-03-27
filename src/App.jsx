@@ -5,17 +5,27 @@ import BuyPage from './pages/BuyPage';
 import { getSiteConfig } from './api';
 
 function TelegramFloat({ contactLink }) {
+  const [lang, setLang] = React.useState(() => localStorage.getItem('lang') || 'ar');
+  const isRtl = lang === 'ar';
+
+  React.useEffect(() => {
+    const handler = (e) => setLang(e.detail || localStorage.getItem('lang') || 'ar');
+    window.addEventListener('lang-changed', handler);
+    return () => window.removeEventListener('lang-changed', handler);
+  }, []);
+
   return (
     <a
       href={contactLink || 'https://t.me/TETHER_IQ'}
       target="_blank"
       rel="noreferrer"
       className="tg-float"
-      title="تواصل معنا على تيليغرام"
+      title={isRtl ? 'تواصل معنا على تيليغرام' : 'Contact us on Telegram'}
       style={{
         position: 'fixed',
         bottom: '1.5rem',
-        left: '1.5rem',
+        left: isRtl ? '1.5rem' : 'auto',
+        right: isRtl ? 'auto' : '1.5rem',
         zIndex: 999,
         display: 'flex',
         alignItems: 'center',
@@ -42,7 +52,7 @@ function TelegramFloat({ contactLink }) {
       <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
         <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.17 13.67l-2.95-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.537-.194 1.006.131.973.887z"/>
       </svg>
-      <span className="tg-float-label">تواصل معنا</span>
+      <span className="tg-float-label">{isRtl ? 'تواصل معنا' : 'Contact Us'}</span>
     </a>
   );
 }
