@@ -9,6 +9,9 @@ import FAQ from '../components/FAQ';
 import ContactSection from '../components/ContactSection';
 import Footer from '../components/Footer';
 import LiveActivity from '../components/LiveActivity';
+import TrustStats from '../components/TrustStats';
+import Testimonials from '../components/Testimonials';
+import StickyMobileCTA from '../components/StickyMobileCTA';
 
 export default function HomePage() {
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
@@ -45,12 +48,15 @@ export default function HomePage() {
 
       <main className="container flex-col gap-6 py-8" style={{ flex: 1, display: 'flex' }}>
         <Hero t={t} lang={lang} usdtAmount={usdtAmount} setUsdtAmount={setUsdtAmount} hero={siteConfig?.hero} />
+        <TrustStats t={t} lang={lang} />
         <Steps t={t} lang={lang} />
         <PaymentMethods t={t} lang={lang} />
+        <Testimonials t={t} lang={lang} />
         <FAQ t={t} lang={lang} faqData={siteConfig?.faq} />
         <ContactSection t={t} lang={lang} contactLink={siteConfig?.links?.contact} />
       </main>
 
+      <StickyMobileCTA t={t} lang={lang} rate={rate} usdtAmount={usdtAmount} />
       <LiveActivity t={t} lang={lang} />
       <Footer t={t} lang={lang} />
     </div>

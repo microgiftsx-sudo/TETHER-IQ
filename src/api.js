@@ -27,3 +27,11 @@ export function getSiteConfig() {
   return jsonFetch('/api/site-config');
 }
 
+export function getStats() {
+  return jsonFetch('/api/stats');
+}
+
+export function getTestimonials() {
+  return jsonFetch('/api/testimonials');
+}
+

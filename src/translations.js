@@ -53,6 +53,13 @@ export const translations = {
     genericInstructions: "يرجى تحويل المبلغ إلى الحساب أدناه لتنفيذ طلبك",
     back: "رجوع",
     confirmAndSend: "تأكيد وإرسال الطلب",
+    statsCustomers: "عميل راضٍ",
+    statsTransactions: "عملية ناجحة",
+    statsYears: "سنوات خبرة",
+    statsSatisfaction: "نسبة رضا العملاء",
+    testimonialsTitle: "ماذا يقول عملاؤنا",
+    stickyBuy: "اشترِ USDT الآن",
+    stickyRate: "السعر الحالي",
   },
   en: {
     heroTitle: "Best Rate to Buy & Sell",
@@ -108,5 +115,12 @@ export const translations = {
     genericInstructions: "Transfer to the account below to process your order",
     back: "Back",
     confirmAndSend: "Confirm & Send Order",
+    statsCustomers: "Happy Customers",
+    statsTransactions: "Successful Orders",
+    statsYears: "Years Experience",
+    statsSatisfaction: "Customer Satisfaction",
+    testimonialsTitle: "What Our Customers Say",
+    stickyBuy: "Buy USDT Now",
+    stickyRate: "Current Rate",
   }
 };

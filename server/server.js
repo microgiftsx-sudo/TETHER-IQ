@@ -14,6 +14,8 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'paymentDetails.json');
 const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
+const STATS_PATH = path.join(DATA_DIR, 'stats.json');
+const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
 
 const app = express();
 app.use(cors());
@@ -34,8 +36,10 @@ function envRequired(name) {
 async function initDataFiles() {
   try { await mkdir(DATA_DIR, { recursive: true }); } catch { /* exists */ }
   const defaults = [
-    { src: path.join(__dirname, 'data', 'paymentDetails.json'), dest: DATA_PATH },
-    { src: path.join(__dirname, 'data', 'siteConfig.json'),     dest: SITE_CONFIG_PATH },
+    { src: path.join(__dirname, 'data', 'paymentDetails.json'),  dest: DATA_PATH },
+    { src: path.join(__dirname, 'data', 'siteConfig.json'),      dest: SITE_CONFIG_PATH },
+    { src: path.join(__dirname, 'data', 'stats.json'),           dest: STATS_PATH },
+    { src: path.join(__dirname, 'data', 'testimonials.json'),    dest: TESTIMONIALS_PATH },
   ];
   for (const { src, dest } of defaults) {
     try { await access(dest); } catch {
@@ -72,6 +76,24 @@ async function saveSiteConfig(cfg) {
   return cfg;
 }
 
+async function loadStats() {
+  try { return JSON.parse(await readFile(STATS_PATH, 'utf8')); }
+  catch { return { customers: 1200, transactions: 3500, years: 3, satisfaction: 99 }; }
+}
+async function saveStats(data) {
+  await writeFile(STATS_PATH, JSON.stringify(data, null, 2), 'utf8');
+  return data;
+}
+
+async function loadTestimonials() {
+  try { return JSON.parse(await readFile(TESTIMONIALS_PATH, 'utf8')); }
+  catch { return []; }
+}
+async function saveTestimonials(data) {
+  await writeFile(TESTIMONIALS_PATH, JSON.stringify(data, null, 2), 'utf8');
+  return data;
+}
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/site-config', async (_req, res) => {
@@ -80,6 +102,16 @@ app.get('/api/site-config', async (_req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
+});
+
+app.get('/api/stats', async (_req, res) => {
+  try { res.json(await loadStats()); }
+  catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
+});
+
+app.get('/api/testimonials', async (_req, res) => {
+  try { res.json(await loadTestimonials()); }
+  catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
 });
 
 async function fetchUsdtUsdPrice() {
@@ -328,6 +360,10 @@ function mainMenuKeyboard() {
       [
         { text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' },
       ],
+      [
+        { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
+        { text: '📊 الإحصائيات', callback_data: 'menu_stats' },
+      ],
     ],
   };
 }
@@ -464,6 +500,34 @@ async function showMaintenanceMenu() {
   );
 }
 
+async function showTestimonialsMenu() {
+  const list = await loadTestimonials();
+  const rows = list.map((r, i) => [
+    { text: `${i + 1}. ${r.nameAr} — ${'⭐'.repeat(r.stars)}`, callback_data: `rev_view_${r.id}` },
+    { text: '🗑️', callback_data: `rev_del_${r.id}` },
+  ]);
+  rows.push([{ text: '➕ إضافة تقييم جديد', callback_data: 'rev_add' }]);
+  rows.push([{ text: '🔙 رجوع', callback_data: 'menu_main' }]);
+  await botSend(
+    `⭐ <b>التقييمات</b>\n━━━━━━━━━━━━━━━\nعدد التقييمات: ${list.length}`,
+    { reply_markup: { inline_keyboard: rows } }
+  );
+}
+
+async function showStatsMenu() {
+  const s = await loadStats();
+  await botSend(
+    `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
+    { reply_markup: { inline_keyboard: [
+      [{ text: '👥 تعديل عدد العملاء', callback_data: 'stat_customers' }],
+      [{ text: '✅ تعديل عدد العمليات', callback_data: 'stat_transactions' }],
+      [{ text: '🏆 تعديل سنوات الخبرة', callback_data: 'stat_years' }],
+      [{ text: '⭐ تعديل نسبة الرضا', callback_data: 'stat_satisfaction' }],
+      [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
+    ] } }
+  );
+}
+
 async function handleCallbackQuery(data) {
   // ── Main navigation ─────────────────────────────────
   if (data === 'menu_main')  { pendingState = null; await sendMainMenu(); return; }
@@ -594,11 +658,13 @@ async function handleCallbackQuery(data) {
   }
 
   // ── Site settings ────────────────────────────────────
-  if (data === 'menu_site')   { await showSiteMenu();        return; }
-  if (data === 'site_faq')    { await showFaqMenu();         return; }
-  if (data === 'site_hero')   { await showHeroMenu();        return; }
-  if (data === 'site_links')  { await showLinksMenu();       return; }
-  if (data === 'site_maint')  { await showMaintenanceMenu(); return; }
+  if (data === 'menu_site')         { await showSiteMenu();         return; }
+  if (data === 'site_faq')          { await showFaqMenu();          return; }
+  if (data === 'site_hero')         { await showHeroMenu();         return; }
+  if (data === 'site_links')        { await showLinksMenu();        return; }
+  if (data === 'site_maint')        { await showMaintenanceMenu();  return; }
+  if (data === 'menu_testimonials') { await showTestimonialsMenu(); return; }
+  if (data === 'menu_stats')        { await showStatsMenu();        return; }
 
   // ── Maintenance toggle ───────────────────────────────
   if (data === 'maint_toggle') {
@@ -634,6 +700,45 @@ async function handleCallbackQuery(data) {
   if (data === 'faq_add') {
     pendingState = { action: 'addFaq', step: 0, data: {} };
     await botSend('❓ أرسل <b>السؤال بالعربية:</b>', { reply_markup: cancelButton() });
+    return;
+  }
+
+  // ── Testimonials ──────────────────────────────────────
+  if (data.startsWith('rev_view_')) {
+    const id = Number(data.replace('rev_view_', ''));
+    const list = await loadTestimonials();
+    const r = list.find(x => x.id === id);
+    if (!r) { await botSend('❌ التقييم غير موجود'); return; }
+    await botSend(
+      `⭐ <b>تقييم #${id}</b>\n👤 ${r.nameAr} / ${r.nameEn}\n📍 ${r.cityAr} / ${r.cityEn}\n${'⭐'.repeat(r.stars)}\n\n🇸🇦 ${r.textAr}\n🇬🇧 ${r.textEn}`,
+      { reply_markup: { inline_keyboard: [[{ text: '🗑️ حذف', callback_data: `rev_del_${id}` }, { text: '🔙 رجوع', callback_data: 'menu_testimonials' }]] } }
+    );
+    return;
+  }
+  if (data.startsWith('rev_del_')) {
+    const id = Number(data.replace('rev_del_', ''));
+    const list = await loadTestimonials();
+    await saveTestimonials(list.filter(x => x.id !== id));
+    await botSend('✅ تم حذف التقييم', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_testimonials' }]] } });
+    return;
+  }
+  if (data === 'rev_add') {
+    pendingState = { action: 'addReview', step: 0, data: {} };
+    await botSend('👤 أرسل <b>الاسم بالعربية:</b>', { reply_markup: cancelButton() });
+    return;
+  }
+
+  // ── Stats ─────────────────────────────────────────────
+  const statFieldMap = {
+    stat_customers:    ['customers',    'عدد العملاء',      'menu_stats'],
+    stat_transactions: ['transactions', 'عدد العمليات',     'menu_stats'],
+    stat_years:        ['years',        'سنوات الخبرة',     'menu_stats'],
+    stat_satisfaction: ['satisfaction', 'نسبة الرضا (%)',   'menu_stats'],
+  };
+  if (statFieldMap[data]) {
+    const [field, label, backTo] = statFieldMap[data];
+    pendingState = { action: 'setStat', field, label, backTo };
+    await botSend(`📊 أرسل القيمة الجديدة لـ <b>${label}</b> (رقم فقط):`, { reply_markup: cancelButton() });
     return;
   }
 
@@ -807,6 +912,42 @@ async function handleAdminCommand(text) {
         await botSend(`✅ تمت إضافة السؤال:\n🇸🇦 <b>${d.qAr}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الأسئلة الشائعة', callback_data: 'site_faq' }]] } });
         return;
       }
+    }
+
+    if (st.action === 'addReview') {
+      const d = st.data || {};
+      if (st.step === 0) { pendingState = { action: 'addReview', step: 1, data: { nameAr: raw } }; await botSend('👤 أرسل <b>الاسم بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 1) { pendingState = { action: 'addReview', step: 2, data: { ...d, nameEn: raw } }; await botSend('📍 أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 2) { pendingState = { action: 'addReview', step: 3, data: { ...d, cityAr: raw } }; await botSend('📍 أرسل <b>المدينة بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 3) { pendingState = { action: 'addReview', step: 4, data: { ...d, cityEn: raw } }; await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 4) {
+        const stars = Math.min(5, Math.max(1, Number(raw) || 5));
+        pendingState = { action: 'addReview', step: 5, data: { ...d, stars } };
+        await botSend('✍️ أرسل <b>نص التقييم بالعربية:</b>', { reply_markup: cancelButton() });
+        return;
+      }
+      if (st.step === 5) { pendingState = { action: 'addReview', step: 6, data: { ...d, textAr: raw } }; await botSend('✍️ أرسل <b>نص التقييم بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 6) {
+        const list = await loadTestimonials();
+        const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameEn, cityAr: d.cityAr, cityEn: d.cityEn, stars: d.stars, textAr: d.textAr, textEn: raw };
+        await saveTestimonials([...list, newItem]);
+        await botSend(`✅ تمت إضافة التقييم:\n⭐ <b>${d.nameAr}</b> — ${'⭐'.repeat(d.stars)}`, { reply_markup: { inline_keyboard: [[{ text: '🔙 التقييمات', callback_data: 'menu_testimonials' }]] } });
+        return;
+      }
+    }
+
+    if (st.action === 'setStat') {
+      const val = Number(raw);
+      if (!Number.isFinite(val) || val < 0) {
+        await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() });
+        pendingState = st;
+        return;
+      }
+      const stats = await loadStats();
+      stats[st.field] = val;
+      await saveStats(stats);
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${val}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الإحصائيات', callback_data: 'menu_stats' }]] } });
+      return;
     }
 
     // unknown pending state - fall through

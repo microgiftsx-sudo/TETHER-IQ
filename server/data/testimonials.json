@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "nameAr": "أحمد الموسى",
+    "nameEn": "Ahmed Al-Mousa",
+    "cityAr": "بغداد",
+    "cityEn": "Baghdad",
+    "textAr": "خدمة ممتازة وسريعة جداً! حولت 500 USDT خلال دقيقتين فقط. سعر أفضل من أي مكان آخر جربته في العراق.",
+    "textEn": "Excellent and very fast service! Transferred 500 USDT in just 2 minutes. Better rate than anywhere else I tried in Iraq.",
+    "stars": 5
+  },
+  {
+    "id": 2,
+    "nameAr": "سارة الخزاعي",
+    "nameEn": "Sara Al-Khuzai",
+    "cityAr": "البصرة",
+    "cityEn": "Basra",
+    "textAr": "أول مرة أستخدم المنصة وكانت التجربة رائعة. الفريق محترف ومساعد جداً. بالتأكيد سأعود مرة أخرى.",
+    "textEn": "First time using the platform and it was a great experience. The team is professional and very helpful. I will definitely come back.",
+    "stars": 5
+  },
+  {
+    "id": 3,
+    "nameAr": "كريم النجار",
+    "nameEn": "Kareem Al-Najjar",
+    "cityAr": "أربيل",
+    "cityEn": "Erbil",
+    "textAr": "أفضل منصة للعملات المشفرة في العراق. سهلة الاستخدام، أسعار تنافسية، وتحويل فوري. أنصح بها للجميع.",
+    "textEn": "Best crypto exchange platform in Iraq. Easy to use, competitive rates, and instant transfer. Highly recommended.",
+    "stars": 5
+  }
+]
