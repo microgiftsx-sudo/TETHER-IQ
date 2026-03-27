@@ -22,12 +22,12 @@ export default function HomePage() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const toggleLang = () => setLang((prev) => {
-    const next = prev === 'ar' ? 'en' : 'ar';
+  const toggleLang = () => {
+    const next = lang === 'ar' ? 'en' : 'ar';
     localStorage.setItem('lang', next);
+    setLang(next);
     window.dispatchEvent(new CustomEvent('lang-changed', { detail: next }));
-    return next;
-  });
+  };
 
   const [usdtAmount, setUsdtAmount] = useState(100);
   const [rate, setRate] = useState(1320);

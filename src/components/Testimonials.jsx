@@ -63,7 +63,7 @@ export default function Testimonials({ t }) {
       {/* Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gridTemplateColumns: 'repeat(3, 1fr)',
         gap: '1.25rem', maxWidth: '1000px', margin: '0 auto',
       }}>
         {slice.map((r) => (
@@ -92,6 +92,10 @@ export default function Testimonials({ t }) {
               </div>
             </div>
           </div>
+        ))}
+        {/* Invisible placeholders to keep grid columns consistent */}
+        {Array.from({ length: PER_PAGE - slice.length }).map((_, i) => (
+          <div key={`placeholder-${i}`} style={{ visibility: 'hidden' }} aria-hidden="true" />
         ))}
       </div>
 
