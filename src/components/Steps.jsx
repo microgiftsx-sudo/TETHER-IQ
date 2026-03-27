@@ -8,7 +8,7 @@ export default function Steps({ t }) {
   return (
     <section className="py-8 w-full">
       <h2 className="text-center mb-8" style={{ textShadow: '0 0 10px rgba(255,255,255,0.1)' }}>{t.stepsTitle}</h2>
-      <div style={{ 
+      <div className="steps-grid" style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
         gap: '2rem' 

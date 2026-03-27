@@ -24,7 +24,7 @@ function FAQItem({ question, answer, lang }) {
 
   return (
     <div
-      className="glass-panel"
+      className="glass-panel faq-item"
       style={{ padding: '1rem 1.5rem', cursor: 'pointer', transition: 'all 0.3s' }}
       onClick={() => setIsOpen(!isOpen)}
     >

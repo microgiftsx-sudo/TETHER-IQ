@@ -162,6 +162,72 @@ h3 { font-size: 1.25rem; }
   .py-16 { padding-top: 6rem; padding-bottom: 6rem; }
 }
 
+/* ══════════════════════════════════════
+   Mobile Optimizations (< 640px)
+══════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* Container */
+  .container { padding: 0 1rem; }
+
+  /* Typography */
+  h1 { font-size: 1.75rem; line-height: 1.2; }
+  h2 { font-size: 1.4rem; }
+  h3 { font-size: 1.1rem; }
+
+  /* Sections vertical spacing */
+  .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+
+  /* Glass panel tighter on mobile */
+  .glass-panel { padding: 1rem; }
+
+  /* Buttons: full touch target */
+  .btn { min-height: 48px; font-size: 1rem; padding: 0.75rem 1.25rem; }
+
+  /* Payment methods: 2-column grid */
+  .payment-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Payment method card compact */
+  .payment-card { padding: 1.1rem 0.5rem !important; }
+
+  /* Steps: single column, compact */
+  .steps-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Hero calculator */
+  .hero-calc { padding: 1.25rem !important; }
+  .hero-calc input {
+    font-size: 1.2rem !important;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  /* Telegram float: icon only */
+  .tg-float-label { display: none; }
+  .tg-float {
+    padding: 0.75rem !important;
+    border-radius: 50% !important;
+    bottom: 1rem !important;
+    left: 1rem !important;
+  }
+
+  /* Hero section spacing */
+  #hero { padding-top: 1.5rem !important; gap: 1.25rem !important; }
+
+  /* FAQ item padding */
+  .faq-item { padding: 0.85rem 1rem !important; }
+
+  /* Live activity bar */
+  .live-activity { font-size: 0.8rem; }
+
+  /* Prevent horizontal overflow */
+  body { overflow-x: hidden; }
+}
+
 /* RTL Support */
 [dir="rtl"] .ml-auto { margin-left: auto; margin-right: 0; }
 [dir="ltr"] .mr-auto { margin-right: auto; margin-left: 0; }

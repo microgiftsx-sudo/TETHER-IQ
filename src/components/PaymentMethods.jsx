@@ -39,7 +39,7 @@ export default function PaymentMethods({ t, lang }) {
       <p className="text-center text-muted mb-8" style={{ fontSize: '1rem', maxWidth: '600px', margin: '0 auto 2rem' }}>
         {t.paymentSubtitle}
       </p>
-      <div style={{
+      <div className="payment-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '1.5rem',
@@ -48,7 +48,7 @@ export default function PaymentMethods({ t, lang }) {
       }}>
         {methods.map((m) => (
           <div key={m.name}
-            className="glass-panel"
+            className="glass-panel payment-card"
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               gap: '0.75rem', padding: '1.75rem 1rem',
