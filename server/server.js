@@ -916,20 +916,17 @@ async function handleAdminCommand(text) {
 
     if (st.action === 'addReview') {
       const d = st.data || {};
-      if (st.step === 0) { pendingState = { action: 'addReview', step: 1, data: { nameAr: raw } }; await botSend('👤 أرسل <b>الاسم بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 1) { pendingState = { action: 'addReview', step: 2, data: { ...d, nameEn: raw } }; await botSend('📍 أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 2) { pendingState = { action: 'addReview', step: 3, data: { ...d, cityAr: raw } }; await botSend('📍 أرسل <b>المدينة بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 3) { pendingState = { action: 'addReview', step: 4, data: { ...d, cityEn: raw } }; await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 4) {
+      if (st.step === 0) { pendingState = { action: 'addReview', step: 1, data: { nameAr: raw } }; await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 1) { pendingState = { action: 'addReview', step: 2, data: { ...d, cityAr: raw } }; await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 2) {
         const stars = Math.min(5, Math.max(1, Number(raw) || 5));
-        pendingState = { action: 'addReview', step: 5, data: { ...d, stars } };
-        await botSend('✍️ أرسل <b>نص التقييم بالعربية:</b>', { reply_markup: cancelButton() });
+        pendingState = { action: 'addReview', step: 3, data: { ...d, stars } };
+        await botSend('✍️ أرسل <b>نص التقييم:</b>', { reply_markup: cancelButton() });
         return;
       }
-      if (st.step === 5) { pendingState = { action: 'addReview', step: 6, data: { ...d, textAr: raw } }; await botSend('✍️ أرسل <b>نص التقييم بالإنجليزية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 6) {
+      if (st.step === 3) {
         const list = await loadTestimonials();
-        const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameEn, cityAr: d.cityAr, cityEn: d.cityEn, stars: d.stars, textAr: d.textAr, textEn: raw };
+        const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameAr, cityAr: d.cityAr, cityEn: d.cityAr, stars: d.stars, textAr: raw, textEn: raw };
         await saveTestimonials([...list, newItem]);
         await botSend(`✅ تمت إضافة التقييم:\n⭐ <b>${d.nameAr}</b> — ${'⭐'.repeat(d.stars)}`, { reply_markup: { inline_keyboard: [[{ text: '🔙 التقييمات', callback_data: 'menu_testimonials' }]] } });
         return;
