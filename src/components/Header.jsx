@@ -177,45 +177,32 @@ function ActionsGroup({ t, lang, toggleLang, scrollTo, rate = 1320, links }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
 
-      {/* BNB Pill */}
-      <a href={links?.bnb || 'https://www.binance.com/en/trade/USDT_BUSD'} target="_blank" rel="noreferrer"
+      {/* Binance Pill */}
+      <a href={links?.bnb || 'https://www.binance.com'} target="_blank" rel="noreferrer"
         className="rate-pill"
         style={{
-          display: 'flex', alignItems: 'center', gap: '0.35rem',
-          background: 'rgba(240,192,32,0.13)', border: '1px solid rgba(240,192,32,0.4)',
-          borderRadius: '20px', padding: '0.28rem 0.7rem',
-          fontSize: '0.75rem', fontWeight: 700, color: '#f0c020',
-          textDecoration: 'none', cursor: 'pointer', transition: 'all 0.2s',
+          display: 'flex', alignItems: 'center',
+          background: '#F0B90B', borderRadius: '20px', padding: '0.3rem 0.85rem',
+          fontSize: '0.8rem', fontWeight: 800, color: '#000',
+          textDecoration: 'none', letterSpacing: '0.01em', transition: 'all 0.2s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(240,192,32,0.22)'; e.currentTarget.style.boxShadow = '0 0 10px rgba(240,192,32,0.2)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(240,192,32,0.13)'; e.currentTarget.style.boxShadow = 'none'; }}
-      >
-        {/* Binance-style B circle */}
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="#f0c020">
-          <polygon points="8,1 10.1,6.1 16,6.9 12,10.8 12.9,16 8,13.3 3.1,16 4,10.8 0,6.9 5.9,6.1"/>
-        </svg>
-        <span>BNB</span>
-        <span style={{ opacity: 0.4 }}>◆</span>
-        <span>{Number(rate).toLocaleString()}</span>
-      </a>
+        onMouseEnter={e => { e.currentTarget.style.background = '#d4a30a'; e.currentTarget.style.boxShadow = '0 0 12px rgba(240,185,11,0.4)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = '#F0B90B'; e.currentTarget.style.boxShadow = 'none'; }}
+      >Binance</a>
 
       {/* OKX Pill */}
-      <a href={links?.okx || 'https://www.okx.com/trade-spot/usdt-usdc'} target="_blank" rel="noreferrer"
+      <a href={links?.okx || 'https://www.okx.com'} target="_blank" rel="noreferrer"
         className="rate-pill"
         style={{
-          display: 'flex', alignItems: 'center', gap: '0.35rem',
-          background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: '20px', padding: '0.28rem 0.7rem',
-          fontSize: '0.75rem', fontWeight: 700, color: 'rgba(248,250,252,0.85)',
-          textDecoration: 'none', cursor: 'pointer', transition: 'all 0.2s',
+          display: 'flex', alignItems: 'center',
+          background: '#111', border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: '20px', padding: '0.3rem 0.85rem',
+          fontSize: '0.8rem', fontWeight: 800, color: '#fff',
+          textDecoration: 'none', letterSpacing: '0.01em', transition: 'all 0.2s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
-      >
-        <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '-0.5px' }}>OKX</span>
-        <span style={{ opacity: 0.35 }}>◆</span>
-        <span>{Number(rate).toLocaleString()}</span>
-      </a>
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; e.currentTarget.style.boxShadow = '0 0 10px rgba(255,255,255,0.1)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.boxShadow = 'none'; }}
+      >OKX</a>
 
       {/* Lang Toggle */}
       <button onClick={toggleLang} style={{
