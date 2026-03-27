@@ -1032,7 +1032,7 @@ async function drainPendingUpdates() {
 
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
-  app.get('*', (_req, res) => {
+  app.get(/.*/, (_req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
