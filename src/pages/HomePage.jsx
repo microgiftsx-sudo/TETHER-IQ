@@ -11,7 +11,7 @@ import Footer from '../components/Footer';
 import LiveActivity from '../components/LiveActivity';
 
 export default function HomePage() {
-  const [lang, setLang] = useState('ar');
+  const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
   const t = translations[lang];
 
   useEffect(() => {
@@ -19,7 +19,11 @@ export default function HomePage() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const toggleLang = () => setLang((prev) => (prev === 'ar' ? 'en' : 'ar'));
+  const toggleLang = () => setLang((prev) => {
+    const next = prev === 'ar' ? 'en' : 'ar';
+    localStorage.setItem('lang', next);
+    return next;
+  });
 
   const [usdtAmount, setUsdtAmount] = useState(100);
   const [rate, setRate] = useState(1320);

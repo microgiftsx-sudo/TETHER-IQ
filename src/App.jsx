@@ -78,10 +78,17 @@ function MaintenancePage({ messageAr, messageEn }) {
 
 export default function App() {
   const [siteConfig, setSiteConfig] = useState(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   useEffect(() => {
-    getSiteConfig().then(setSiteConfig).catch(() => {});
+    getSiteConfig()
+      .then(cfg => { setSiteConfig(cfg); setConfigLoaded(true); })
+      .catch(() => setConfigLoaded(true));
   }, []);
+
+  if (!configLoaded) {
+    return <div style={{ minHeight: '100vh', background: '#030712' }} />;
+  }
 
   const maintenance = siteConfig?.maintenance;
 
