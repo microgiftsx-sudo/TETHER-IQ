@@ -29,8 +29,9 @@ export default function Header({ t, lang, toggleLang, rate = 1320, links }) {
 
       {/* ── Announcement Bar ── */}
       <div style={{
-        background: 'linear-gradient(90deg,#8a6800,#f0c520,#8a6800)',
-        color: '#000', textAlign: 'center',
+        background: 'linear-gradient(90deg,rgba(0,229,255,0.08),rgba(0,119,255,0.18),rgba(0,229,255,0.08))',
+        borderBottom: '1px solid rgba(0,229,255,0.2)',
+        color: 'var(--accent-primary)', textAlign: 'center',
         padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 700,
       }}>
         {t.announcement}
