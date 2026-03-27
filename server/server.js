@@ -3,25 +3,45 @@ import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '..');
 
+const PORT = Number(process.env.PORT || 5174);
+const IS_PROD = process.env.NODE_ENV === 'production';
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DATA_PATH = path.join(DATA_DIR, 'paymentDetails.json');
+const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
-const PORT = Number(process.env.PORT || 5174);
-const DATA_PATH = path.join(__dirname, 'data', 'paymentDetails.json');
-const SITE_CONFIG_PATH = path.join(__dirname, 'data', 'siteConfig.json');
+if (IS_PROD) {
+  const distPath = path.join(PROJECT_ROOT, 'dist');
+  app.use(express.static(distPath));
+}
 const ALLOWED_NETWORKS = new Set(['TRC20', 'ERC20', 'BEP20']);
 
 function envRequired(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
+}
+
+async function initDataFiles() {
+  try { await mkdir(DATA_DIR, { recursive: true }); } catch { /* exists */ }
+  const defaults = [
+    { src: path.join(__dirname, 'data', 'paymentDetails.json'), dest: DATA_PATH },
+    { src: path.join(__dirname, 'data', 'siteConfig.json'),     dest: SITE_CONFIG_PATH },
+  ];
+  for (const { src, dest } of defaults) {
+    try { await access(dest); } catch {
+      try { await writeFile(dest, await readFile(src, 'utf8'), 'utf8'); } catch { /* ignore */ }
+    }
+  }
 }
 
 async function loadPaymentDetails() {
@@ -214,9 +234,6 @@ let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
 let pendingState = null; // { action, path?, label?, method? }
-const MY_PID = process.pid;
-const POLL_LOCK_PATH = path.join(__dirname, 'data', '.poll_lock.json');
-const LOCK_TTL_MS = 6000;
 
 function isAdminMessage(msg) {
   const fromId = msg?.from?.id;
@@ -934,19 +951,6 @@ async function handlePhotoMessage(msg) {
   await savePhotoAsQr(msg, key, key);
 }
 
-async function acquirePollLock() {
-  try {
-    let lock = null;
-    try { lock = JSON.parse(await readFile(POLL_LOCK_PATH, 'utf8')); } catch { /* no lock */ }
-    const now = Date.now();
-    if (lock && lock.pid !== MY_PID && (now - (lock.ts || 0)) < LOCK_TTL_MS) return false;
-    await writeFile(POLL_LOCK_PATH, JSON.stringify({ pid: MY_PID, ts: now }), 'utf8');
-    await new Promise(r => setTimeout(r, 30));
-    try { const check = JSON.parse(await readFile(POLL_LOCK_PATH, 'utf8')); if (check.pid !== MY_PID) return false; } catch { return false; }
-    return true;
-  } catch { return false; }
-}
-
 async function pollTelegram() {
   if (isPolling) return;
   isPolling = true;
@@ -1026,10 +1030,17 @@ async function drainPendingUpdates() {
   }
 }
 
+if (IS_PROD) {
+  const distPath = path.join(PROJECT_ROOT, 'dist');
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`API running on http://localhost:${PORT}`);
-  drainPendingUpdates().then(() => {
+  initDataFiles().then(() => drainPendingUpdates()).then(() => {
     const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
     loopPoll();
     // eslint-disable-next-line no-console
