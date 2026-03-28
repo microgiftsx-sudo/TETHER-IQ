@@ -213,6 +213,21 @@ app.get('/api/testimonials', async (_req, res) => {
   catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
 });
 
+async function fetchGeoIp(ip) {
+  if (!ip || ip === '127.0.0.1' || ip === '::1') return { country: 'Local', city: '' };
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const d = await res.json();
+    if (d.status === 'success') return { country: d.country, city: d.city };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('GeoIP fetch failed', e?.message || e);
+  }
+  return { country: 'Unknown', city: '' };
+}
+
 app.post('/api/track-visit', async (req, res) => {
   try {
     const body = req.body || {};
@@ -221,7 +236,9 @@ app.post('/api/track-visit', async (req, res) => {
     if (shouldSkipVisitDedupe(visitorId, pagePath)) {
       return res.json({ ok: true, skipped: true });
     }
-    const rec = buildVisitRecord(body, req);
+    const ip = req.ip || req.socket?.remoteAddress || '';
+    const location = await fetchGeoIp(ip.replace(/^::ffff:/, ''));
+    const rec = buildVisitRecord(body, req, location);
     await appendVisit(VISITS_PATH, rec);
     res.json({ ok: true, id: rec.id });
   } catch (e) {
@@ -629,9 +646,9 @@ async function showCrmHome(forceChatId = null) {
   const vSt = computeVisitStats(visits);
   const oSt = computeOrderStats(orders);
 
-  // Clean top paths display
+  // Clean top paths display with location and device
   const topPaths = vSt.topPaths
-    .map((p) => `• <code>${p.path}</code> : ${p.count}`)
+    .map((p) => `• <code>${p.path}</code> (${p.location} · ${p.device}) : ${p.count}`)
     .join('\n') || '—';
 
   const text = [

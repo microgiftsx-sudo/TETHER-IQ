@@ -79,8 +79,9 @@ function pruneOrders(list) {
 /**
  * @param {object} body from client
  * @param {import('express').Request | null} req
+ * @param {object} location { country, city }
  */
-export function buildVisitRecord(body, req) {
+export function buildVisitRecord(body, req, location = {}) {
   // Strip query parameters for cleaner stats and reports
   let pathNorm = String(body?.path || '/').split('?')[0].split('#')[0];
   pathNorm = pathNorm.replace(/\/+$/, '') || '/';
@@ -98,6 +99,8 @@ export function buildVisitRecord(body, req) {
     referrer,
     visitorId: visitorId || 'anon',
     device: classifyDevice(uaHeader),
+    country: String(location.country || 'Unknown').slice(0, 80),
+    city: String(location.city || '').slice(0, 80),
     ua: String(uaHeader).slice(0, 220),
     ip: String(ip).replace(/^::ffff:/, '').slice(0, 45),
   };
@@ -173,13 +176,19 @@ export function computeVisitStats(list) {
       if (v.visitorId) visitorsWeek.add(v.visitorId);
     }
     const p = v.path || '/';
-    pathCounts.set(p, (pathCounts.get(p) || 0) + 1);
+    const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : 'Unknown';
+    const dev = v.device || 'unknown';
+    const key = `${p}|${loc}|${dev}`;
+    pathCounts.set(key, (pathCounts.get(key) || 0) + 1);
   }
 
   const topPaths = [...pathCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([pathKey, count]) => ({ path: pathKey, count }));
+    .slice(0, 10)
+    .map(([key, count]) => {
+      const [path, location, device] = key.split('|');
+      return { path, location, device, count };
+    });
 
   return {
     total: list.length,
@@ -259,7 +268,10 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const vRows = visitSlice.map((v) => `<tr><td>${esc(v.at)}</td><td class="path-col">${esc(v.path)}</td><td>${esc(v.device)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`).join('');
+  const vRows = visitSlice.map((v) => {
+    const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : '—';
+    return `<tr><td>${esc(v.at)}</td><td class="path-col">${esc(v.path)}</td><td>${esc(loc)}</td><td>${esc(v.device)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`;
+  }).join('');
   const oRows = orderSlice.map((o) => `<tr><td>${esc(o.at)}</td><td>${esc(o.orderId)}</td><td>${esc(o.name)}</td><td>${esc(o.usdtAmount)}</td><td>${esc(o.paymentMethod)}</td></tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -298,7 +310,7 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
     <li>حجم USDT (7 أيام): ${summary.orders.volumeWeek}</li>
   </ul>
   <h2>آخر الزيارات (حتى 200)</h2>
-  <table><thead><tr><th>وقت</th><th>المسار</th><th>الجهاز</th><th>اللغة</th><th>IP</th></tr></thead><tbody>${vRows || '<tr><td colspan="5">—</td></tr>'}</tbody></table>
+  <table><thead><tr><th>وقت</th><th>المسار</th><th>الموقع</th><th>الجهاز</th><th>اللغة</th><th>IP</th></tr></thead><tbody>${vRows || '<tr><td colspan="6">—</td></tr>'}</tbody></table>
   <h2>آخر الطلبات (حتى 200)</h2>
   <table><thead><tr><th>وقت</th><th>رقم الطلب</th><th>الاسم</th><th>USDT</th><th>طريقة الدفع</th></tr></thead><tbody>${oRows || '<tr><td colspan="5">—</td></tr>'}</tbody></table>
   <p style="margin-top:24px;font-size:0.85rem;color:#666">للحفظ كـ PDF: استخدم الطباعة من المتصفح ← اختر «Save as PDF».</p>
