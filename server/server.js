@@ -646,9 +646,9 @@ async function showCrmHome(forceChatId = null) {
   const vSt = computeVisitStats(visits);
   const oSt = computeOrderStats(orders);
 
-  // Clean top paths display with location and device
-  const topPaths = vSt.topPaths
-    .map((p) => `• <code>${p.path}</code> (${p.location} · ${p.device}) : ${p.count}`)
+  // Summarize by source (location and device)
+  const topSources = vSt.topSources
+    .map((s) => `• (${s.location} · ${s.device}) : <b>${s.count}</b>`)
     .join('\n') || '—';
 
   const text = [
@@ -660,8 +660,8 @@ async function showCrmHome(forceChatId = null) {
     `🛒 <b>الطلبات:</b> ${oSt.ordersToday} اليوم · ${oSt.ordersWeek} أسبوعياً`,
     `💰 <b>حجم التداول (7 أيام):</b> ${oSt.volumeWeek} USDT`,
     '',
-    '🔥 <b>الأكثر زيارة:</b>',
-    topPaths,
+    '🔥 <b>المصادر الأكثر نشاطاً:</b>',
+    topSources,
     '',
     '🌐 <b>لوحة الويب:</b> <code>/admin/crm</code>',
   ].join('\n');

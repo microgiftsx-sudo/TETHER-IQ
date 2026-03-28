@@ -178,16 +178,16 @@ export function computeVisitStats(list) {
     const p = v.path || '/';
     const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : 'Unknown';
     const dev = v.device || 'unknown';
-    const key = `${p}|${loc}|${dev}`;
+    const key = `${loc}|${dev}`; // Summarize by source (location + device)
     pathCounts.set(key, (pathCounts.get(key) || 0) + 1);
   }
 
-  const topPaths = [...pathCounts.entries()]
+  const topSources = [...pathCounts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([key, count]) => {
-      const [path, location, device] = key.split('|');
-      return { path, location, device, count };
+      const [location, device] = key.split('|');
+      return { location, device, count };
     });
 
   return {
@@ -195,7 +195,7 @@ export function computeVisitStats(list) {
     visitsToday,
     visitsWeek,
     uniqueVisitorsWeek: visitorsWeek.size,
-    topPaths,
+    topSources,
   };
 }
 
