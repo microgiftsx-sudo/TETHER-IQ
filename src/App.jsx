@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import BuyPage from './pages/BuyPage';
+import AdminCrmPage from './pages/AdminCrmPage';
+import VisitTracker from './components/VisitTracker';
 import { getSiteConfig } from './api';
 
 function TelegramFloat({ contactLink }) {
@@ -120,9 +122,11 @@ export default function App() {
 
   return (
     <div className="app-root">
+      <VisitTracker />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/buy" element={<BuyPage />} />
+        <Route path="/admin/crm" element={<AdminCrmPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
       <TelegramFloat contactLink={siteConfig?.links?.contact} />

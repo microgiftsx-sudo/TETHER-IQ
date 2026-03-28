@@ -48,3 +48,7 @@ export function getTestimonials() {
   return jsonFetch('/api/testimonials');
 }
 
+export function getRecentActivity(limit = 5) {
+  return jsonFetch(`/api/activity/recent?limit=${encodeURIComponent(limit)}`);
+}
+

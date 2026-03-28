@@ -60,6 +60,14 @@ export const translations = {
     testimonialsTitle: "ماذا يقول عملاؤنا",
     stickyBuy: "اشترِ USDT الآن",
     stickyRate: "السعر الحالي",
+    siteActivityTitle: "آخر النشاط على الموقع",
+    siteActivityVisits: "آخر الزيارات",
+    siteActivityOrders: "آخر الطلبات المسجّلة",
+    siteActivityDisclaimer: "معاينة مجمّعة لآخر الزيارات والطلبات (دون بيانات شخصية للعملاء). تُحدَّث تلقائياً.",
+    deviceMobile: "جوال",
+    deviceDesktop: "كمبيوتر",
+    deviceTablet: "تابلت",
+    deviceUnknown: "جهاز",
   },
   en: {
     heroTitle: "Best Rate to Buy & Sell",
@@ -122,5 +130,13 @@ export const translations = {
     testimonialsTitle: "What Our Customers Say",
     stickyBuy: "Buy USDT Now",
     stickyRate: "Current Rate",
+    siteActivityTitle: "Recent site activity",
+    siteActivityVisits: "Latest visits",
+    siteActivityOrders: "Latest recorded orders",
+    siteActivityDisclaimer: "Aggregated recent visits and orders (no private customer data). Updates automatically.",
+    deviceMobile: "Mobile",
+    deviceDesktop: "Desktop",
+    deviceTablet: "Tablet",
+    deviceUnknown: "Device",
   }
 };

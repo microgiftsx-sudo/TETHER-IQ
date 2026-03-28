@@ -4,6 +4,7 @@ import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import RecentSiteActivity from '../components/RecentSiteActivity';
 
 function useCountdown(targetMs) {
   const [now, setNow] = useState(Date.now());
@@ -540,6 +541,9 @@ export default function BuyPage() {
         )}
       </div>
     </section>
+    <div className="container py-6" style={{ maxWidth: 900 }}>
+      <RecentSiteActivity t={t} lang={lang} />
+    </div>
     </main>
     <Footer t={t} lang={lang} />
     </div>

@@ -26,6 +26,25 @@ import {
   defaultEmptyMethods,
   defaultMethodEnabled,
 } from './paymentProfiles.js';
+import {
+  defaultDataPaths,
+  shouldSkipVisitDedupe,
+  buildVisitRecord,
+  appendVisit,
+  appendOrderEvent,
+  loadVisits,
+  loadOrders,
+  sanitizeVisitPublic,
+  sanitizeOrderPublic,
+  getRecentVisits,
+  getRecentOrders,
+  buildFullCrmSummary,
+  visitsToCsv,
+  ordersToCsv,
+  buildPrintableHtmlReport,
+  computeVisitStats,
+  computeOrderStats,
+} from './crmStore.js';
 
 const PAYMENT_METHOD_LABEL_TO_KEY = {
   'Zain Cash': 'zainCash',
@@ -61,10 +80,24 @@ const DATA_PATH = path.join(DATA_DIR, 'paymentDetails.json');
 const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
 const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
+const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
+
+function adminCrmToken() {
+  return String(process.env.ADMIN_CRM_TOKEN || '').trim();
+}
+
+function checkAdminCrmAuth(req) {
+  const t = adminCrmToken();
+  if (!t) return false;
+  const header = req.headers['x-admin-crm-token'] || req.headers['x-admin-token'];
+  const q = req.query?.token;
+  return header === t || q === t;
+}
 
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
@@ -85,6 +118,8 @@ async function initDataFiles() {
     { src: path.join(__dirname, 'data', 'siteConfig.json'),      dest: SITE_CONFIG_PATH },
     { src: path.join(__dirname, 'data', 'stats.json'),           dest: STATS_PATH },
     { src: path.join(__dirname, 'data', 'testimonials.json'),    dest: TESTIMONIALS_PATH },
+    { src: path.join(__dirname, 'data', 'visits.json'),          dest: VISITS_PATH },
+    { src: path.join(__dirname, 'data', 'ordersLog.json'),       dest: ORDERS_CRM_PATH },
   ];
   for (const { src, dest } of defaults) {
     try { await access(dest); } catch {
@@ -177,6 +212,135 @@ app.get('/api/stats', async (_req, res) => {
 app.get('/api/testimonials', async (_req, res) => {
   try { res.json(await loadTestimonials()); }
   catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
+});
+
+app.post('/api/track-visit', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const visitorId = String(body.visitorId || '');
+    const pagePath = String(body.path || '/');
+    if (shouldSkipVisitDedupe(visitorId, pagePath)) {
+      return res.json({ ok: true, skipped: true });
+    }
+    const rec = buildVisitRecord(body, req);
+    await appendVisit(VISITS_PATH, rec);
+    res.json({ ok: true, id: rec.id });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/activity/recent', async (req, res) => {
+  try {
+    const lim = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
+    const visits = await loadVisits(VISITS_PATH);
+    const orders = await loadOrders(ORDERS_CRM_PATH);
+    const recentV = getRecentVisits(visits, lim).map(sanitizeVisitPublic);
+    const recentO = getRecentOrders(orders, lim).map(sanitizeOrderPublic);
+    res.json({ visits: recentV, orders: recentO });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/admin/crm/summary', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).json({
+        error: adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN in .env',
+      });
+    }
+    const marketing = await loadStats();
+    const summary = await buildFullCrmSummary(VISITS_PATH, ORDERS_CRM_PATH, marketing);
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/admin/crm/visits', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).json({
+        error: adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN in .env',
+      });
+    }
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
+    const all = await loadVisits(VISITS_PATH);
+    const newestFirst = [...all].reverse();
+    const slice = newestFirst.slice(offset, offset + limit);
+    res.json({ total: all.length, offset, limit, items: slice });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/admin/crm/orders', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).json({
+        error: adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN in .env',
+      });
+    }
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const newestFirst = [...all].reverse();
+    const slice = newestFirst.slice(offset, offset + limit);
+    res.json({ total: all.length, offset, limit, items: slice });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/admin/crm/export/visits.csv', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).send(adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN');
+    }
+    const all = await loadVisits(VISITS_PATH);
+    const csv = visitsToCsv(all);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="visits.csv"');
+    res.send('\ufeff' + csv);
+  } catch (e) {
+    res.status(500).send(String(e?.message || e));
+  }
+});
+
+app.get('/api/admin/crm/export/orders.csv', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).send(adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN');
+    }
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const csv = ordersToCsv(all);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="orders.csv"');
+    res.send('\ufeff' + csv);
+  } catch (e) {
+    res.status(500).send(String(e?.message || e));
+  }
+});
+
+app.get('/api/admin/crm/report.html', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).send(adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN');
+    }
+    const marketing = await loadStats();
+    const summary = await buildFullCrmSummary(VISITS_PATH, ORDERS_CRM_PATH, marketing);
+    const visits = await loadVisits(VISITS_PATH);
+    const orders = await loadOrders(ORDERS_CRM_PATH);
+    const vSl = getRecentVisits(visits, 200);
+    const oSl = getRecentOrders(orders, 200);
+    const html = buildPrintableHtmlReport(summary, vSl, oSl);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (e) {
+    res.status(500).send(String(e?.message || e));
+  }
 });
 
 async function fetchUsdtUsdPrice() {
@@ -340,6 +504,19 @@ app.post('/api/order', async (req, res) => {
       proofSent = true;
     }
 
+    try {
+      await appendOrderEvent(ORDERS_CRM_PATH, {
+        orderId: safeOrderId,
+        name,
+        usdtAmount: amountNum,
+        paymentMethod,
+        network: normalizedNetwork,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[CRM] order log failed', err?.message || err);
+    }
+
     res.json({ ok: true, orderId: safeOrderId, proofSent });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -384,6 +561,9 @@ function helpText() {
     '   qr fib       — باركود المصرف الأول',
     '   qr mastercard — باركود ماستر كارد',
     '   qr asia      — باركود آسيا حوالة',
+    '',
+    '📈 CRM (زيارات وطلبات):',
+    'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
     '',
     '✏️ تعديل البيانات:',
     '/set methods.zainCash.number 07714740129',
@@ -435,6 +615,59 @@ async function botSend(text, extra = {}, forceChatId = null) {
   }
 }
 
+async function sendCrmDocument(chatId, filename, buffer, caption = '') {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken || !chatId) return;
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (caption) form.append('caption', caption.slice(0, 1000));
+    const mime = filename.endsWith('.csv') ? 'text/csv' : 'text/html';
+    form.append('document', buffer, { filename, contentType: `${mime}; charset=utf-8` });
+    const { data } = await tgPostMultipart(botToken, 'sendDocument', form);
+    if (!data?.ok) {
+      // eslint-disable-next-line no-console
+      console.error('Bot: sendDocument failed:', JSON.stringify(data));
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Bot: sendCrmDocument exception:', err);
+  }
+}
+
+async function showCrmHome(forceChatId = null) {
+  const visits = await loadVisits(VISITS_PATH);
+  const orders = await loadOrders(ORDERS_CRM_PATH);
+  const stats = await loadStats();
+  const vSt = computeVisitStats(visits);
+  const oSt = computeOrderStats(orders);
+  const topPaths = vSt.topPaths.map((p) => `${p.path}: ${p.count}`).join(', ') || '—';
+  const webNote = adminCrmToken()
+    ? '\n\n🌐 <b>لوحة الويب:</b> مسار <code>/admin/crm</code> — الرمز من <code>ADMIN_CRM_TOKEN</code>'
+    : '\n\n⚠️ للوحة الويب: أضف <code>ADMIN_CRM_TOKEN</code> في <code>.env</code>';
+  const text = [
+    '📈 <b>CRM — لوحة المتابعة</b>',
+    '━━━━━━━━━━━━━━━',
+    `<b>زيارات اليوم:</b> ${vSt.visitsToday}`,
+    `<b>زيارات (7 أيام):</b> ${vSt.visitsWeek} · زوّار مميّز: ${vSt.uniqueVisitorsWeek}`,
+    `<b>إجمالي الزيارات المخزّنة:</b> ${vSt.total}`,
+    `<b>أكثر المسارات:</b> ${escapeTelegramHtml(topPaths)}`,
+    '',
+    `<b>طلبات اليوم:</b> ${oSt.ordersToday} · USDT: ${oSt.volumeToday}`,
+    `<b>طلبات (7 أيام):</b> ${oSt.ordersWeek} · USDT: ${oSt.volumeWeek}`,
+    `<b>إجمالي الطلبات المسجّلة:</b> ${oSt.total}`,
+    '',
+    `<b>أرقام العرض (الواجهة):</b> 👥 ${stats.customers} · ✅ ${stats.transactions}`,
+    webNote,
+  ].join('\n');
+  await botSend(text, { reply_markup: { inline_keyboard: [
+    [{ text: '🔎 آخر 5 زيارات', callback_data: 'crm_v5' }, { text: '🛒 آخر 5 طلبات', callback_data: 'crm_o5' }],
+    [{ text: '📥 CSV زيارات', callback_data: 'crm_csv_v' }, { text: '📥 CSV طلبات', callback_data: 'crm_csv_o' }],
+    [{ text: '📄 تقرير HTML (لـPDF)', callback_data: 'crm_html' }],
+    [{ text: '🔙 القائمة', callback_data: 'menu_main' }],
+  ] } }, forceChatId);
+}
+
 async function answerCbq(id, text = '') {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -461,6 +694,9 @@ function mainMenuKeyboard() {
       [
         { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
         { text: '📊 الإحصائيات', callback_data: 'menu_stats' },
+      ],
+      [
+        { text: '📈 CRM — زيارات وطلبات', callback_data: 'menu_crm' },
       ],
     ],
   };
@@ -933,6 +1169,62 @@ async function handleCallbackQuery(data, incomingChatId) {
   if (data === 'site_maint')        { await showMaintenanceMenu(incomingChatId);  return; }
   if (data === 'menu_testimonials') { await showTestimonialsMenu(incomingChatId); return; }
   if (data === 'menu_stats')        { await showStatsMenu(incomingChatId);        return; }
+
+  if (data === 'menu_crm') {
+    await showCrmHome(incomingChatId);
+    return;
+  }
+
+  if (data === 'crm_v5') {
+    const visits = await loadVisits(VISITS_PATH);
+    const last = getRecentVisits(visits, 5);
+    const body = last.length
+      ? last.map((v) => `• ${v.at}\n  ${v.path} · ${v.device} · ${v.ip || '-'} · ${v.lang || ''}`).join('\n\n')
+      : 'لا توجد زيارات بعد.';
+    await botSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
+    return;
+  }
+
+  if (data === 'crm_o5') {
+    const orders = await loadOrders(ORDERS_CRM_PATH);
+    const last = getRecentOrders(orders, 5);
+    const body = last.length
+      ? last.map((o) => `• ${o.orderId}\n  ${o.name} · ${o.usdtAmount} USDT · ${o.paymentMethod}`).join('\n\n')
+      : 'لا طلبات مسجّلة بعد.';
+    await botSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
+    return;
+  }
+
+  if (data === 'crm_csv_v') {
+    const all = await loadVisits(VISITS_PATH);
+    const csv = visitsToCsv(all);
+    await sendCrmDocument(incomingChatId, 'visits-export.csv', Buffer.from('\ufeff' + csv, 'utf8'), `تصدير ${all.length} زيارة`);
+    return;
+  }
+
+  if (data === 'crm_csv_o') {
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const csv = ordersToCsv(all);
+    await sendCrmDocument(incomingChatId, 'orders-export.csv', Buffer.from('\ufeff' + csv, 'utf8'), `تصدير ${all.length} طلب`);
+    return;
+  }
+
+  if (data === 'crm_html') {
+    const marketing = await loadStats();
+    const summary = await buildFullCrmSummary(VISITS_PATH, ORDERS_CRM_PATH, marketing);
+    const visits = await loadVisits(VISITS_PATH);
+    const orders = await loadOrders(ORDERS_CRM_PATH);
+    const vSl = getRecentVisits(visits, 200);
+    const oSl = getRecentOrders(orders, 200);
+    const html = buildPrintableHtmlReport(summary, vSl, oSl);
+    await sendCrmDocument(
+      incomingChatId,
+      'crm-report.html',
+      Buffer.from(html, 'utf8'),
+      'افتح الملف في المتصفح ← طباعة / حفظ PDF',
+    );
+    return;
+  }
 
   // ── Maintenance toggle ───────────────────────────────
   if (data === 'maint_toggle') {
