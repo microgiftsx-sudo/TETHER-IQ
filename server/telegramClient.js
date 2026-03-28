@@ -65,14 +65,25 @@ export async function tgPostMultipart(botToken, method, form, options = {}) {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      // For fetch (especially in Node 18+), using a Buffer is more reliable than a stream
+      // when using the 'form-data' package, as fetch can compute Content-Length.
+      const isFormDataPkg = typeof form.getHeaders === 'function' && typeof form.getBuffer === 'function';
+      const body = isFormDataPkg ? form.getBuffer() : form;
+      const headers = isFormDataPkg ? form.getHeaders() : {};
+
       const res = await fetch(url, {
         method: 'POST',
-        body: form,
-        headers: form.getHeaders(),
+        headers: { ...headers, ...options.headers },
+        body,
         signal: AbortSignal.timeout(timeoutMs),
       });
       const text = await res.text();
       const data = parseTelegramResponse(text);
+
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.error(`Telegram ${method} HTTP ${res.status}:`, text?.slice(0, 500));
+      }
 
       if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
         const retryAfterSec = Number(data?.parameters?.retry_after) || 0;
