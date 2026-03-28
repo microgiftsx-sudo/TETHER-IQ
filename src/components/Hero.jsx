@@ -43,7 +43,7 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
         </p>
       </div>
 
-      <div className="calculator hero-calc glass-panel w-full" style={{ maxWidth: '500px', textAlign: isRtl ? 'right' : 'left', padding: '2rem' }}>
+      <div id="checkout-form" className="calculator hero-calc glass-panel w-full" style={{ maxWidth: '500px', textAlign: isRtl ? 'right' : 'left', padding: '2rem' }}>
         <div className="flex justify-between items-center mb-4 text-sm" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
           <span className="text-muted">{t.rateLabel}</span>
           <span className="text-accent" style={{ fontWeight: 'bold' }}>1 USDT = {RATE.toLocaleString()} IQD</span>

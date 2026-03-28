@@ -20,12 +20,63 @@
   padding: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+::selection {
+  background: rgba(0, 229, 255, 0.25);
+  color: var(--text-primary);
+}
+
 body {
   font-family: 'Cairo', 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--primary-color);
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
+}
+
+/* Keyboard focus — visible ring without cluttering mouse clicks */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Flex children + media: avoid horizontal overflow */
+main {
+  min-width: 0;
+}
+
+img, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+@keyframes app-shell-spin {
+  to { transform: rotate(360deg); }
+}
+
+.app-shell-loading-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 229, 255, 0.15);
+  border-top-color: var(--accent-primary);
+  animation: app-shell-spin 0.85s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell-loading-spinner { animation: none; border-color: var(--accent-primary); opacity: 0.7; }
 }
 
 /* Glassmorphism Panel */
@@ -153,6 +204,13 @@ h3 { font-size: 1.25rem; }
 .py-16 { padding-top: 4rem; padding-bottom: 4rem; }
 .text-sm { font-size: 0.875rem; }
 .lh-16 { line-height: 1.6; }
+
+/* Trust stats: 4 columns only on wide screens */
+@media (max-width: 960px) {
+  .trust-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
 
 /* Responsive adjustments for Desktop */
 @media (min-width: 768px) {

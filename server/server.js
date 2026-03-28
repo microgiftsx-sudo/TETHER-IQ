@@ -5,6 +5,15 @@ import FormData from 'form-data';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { normalizeStats, DEFAULT_STATS } from '../shared/statsNormalize.js';
+import {
+  tgPostJson,
+  tgPostMultipart,
+  tgGetUpdates,
+  tgGetFile,
+  tgAnswerCallbackQuery,
+  escapeTelegramHtml,
+} from './telegramClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,12 +87,17 @@ async function saveSiteConfig(cfg) {
 }
 
 async function loadStats() {
-  try { return JSON.parse(await readFile(STATS_PATH, 'utf8')); }
-  catch { return { customers: 1200, transactions: 3500, years: 3, satisfaction: 99 }; }
+  try {
+    const raw = JSON.parse(await readFile(STATS_PATH, 'utf8'));
+    return normalizeStats(raw);
+  } catch {
+    return { ...DEFAULT_STATS };
+  }
 }
 async function saveStats(data) {
-  await writeFile(STATS_PATH, JSON.stringify(data, null, 2), 'utf8');
-  return data;
+  const next = normalizeStats(data);
+  await writeFile(STATS_PATH, JSON.stringify(next, null, 2), 'utf8');
+  return next;
 }
 
 async function loadTestimonials() {
@@ -197,34 +211,32 @@ app.post('/api/order', async (req, res) => {
     const safeOrderId = String(orderId || `ORD-${Date.now().toString(36).toUpperCase()}`);
 
     const lines = [
-      '🚀 *طلب جديد (New Order)* 🚀',
+      '🚀 <b>طلب جديد (New Order)</b> 🚀',
       '━━━━━━━━━━━━━━━',
-      `🧾 *رقم الطلب:* ${safeOrderId}`,
-      `👤 *الاسم:* ${name}`,
-      `💰 *المبلغ:* ${amountNum} USDT`,
-      `💵 *المقابل:* ${iqdAmount} IQD`,
-      `💳 *طريقة الدفع:* ${paymentMethod}`,
-      paymentDetail ? `📱 *تفاصيل الدفع:* ${paymentDetail}` : null,
-      `📥 *محفظة الاستلام:* ${walletTrim}`,
-      `🕸️ *الشبكة:* ${normalizedNetwork}`,
-      senderTrim ? `📞 *رقم المرسل:* ${senderTrim}` : null,
-      paymentProofName ? `📎 *دليل الدفع:* ${paymentProofName}` : null,
+      `<b>🧾 رقم الطلب:</b> ${escapeTelegramHtml(safeOrderId)}`,
+      `<b>👤 الاسم:</b> ${escapeTelegramHtml(name)}`,
+      `<b>💰 المبلغ:</b> ${escapeTelegramHtml(String(amountNum))} USDT`,
+      `<b>💵 المقابل:</b> ${escapeTelegramHtml(String(iqdAmount))} IQD`,
+      `<b>💳 طريقة الدفع:</b> ${escapeTelegramHtml(paymentMethod)}`,
+      paymentDetail ? `<b>📱 تفاصيل الدفع:</b> ${escapeTelegramHtml(paymentDetail)}` : null,
+      `<b>📥 محفظة الاستلام:</b> <code>${escapeTelegramHtml(walletTrim)}</code>`,
+      `<b>🕸️ الشبكة:</b> ${escapeTelegramHtml(normalizedNetwork)}`,
+      senderTrim ? `<b>📞 رقم المرسل:</b> ${escapeTelegramHtml(senderTrim)}` : null,
+      paymentProofName ? `<b>📎 دليل الدفع:</b> ${escapeTelegramHtml(paymentProofName)}` : null,
       '━━━━━━━━━━━━━━━',
     ].filter(Boolean);
 
-    const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: lines.join('\n'),
-        parse_mode: 'Markdown',
-      }),
+    const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
+      chat_id: chatId,
+      text: lines.join('\n'),
+      parse_mode: 'HTML',
     });
 
-    if (!tgRes.ok) {
-      const text = await tgRes.text();
-      return res.status(502).json({ error: 'Telegram send failed', details: text });
+    if (!tgOrder?.ok) {
+      return res.status(502).json({
+        error: 'Telegram send failed',
+        details: JSON.stringify(tgOrder || {}),
+      });
     }
 
     // Send payment proof image/document if provided (multipart — reliable in Node)
@@ -252,18 +264,13 @@ app.post('/api/order', async (req, res) => {
       form.append('caption', caption);
       form.append(field, buf, { filename, contentType: mime });
 
-      const proofRes = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
-        method: 'POST',
-        body: form,
-        headers: form.getHeaders(),
-      });
-      const proofText = await proofRes.text();
-      if (!proofRes.ok) {
+      const { data: proofTg } = await tgPostMultipart(botToken, method, form);
+      if (!proofTg?.ok) {
         // eslint-disable-next-line no-console
-        console.error('Telegram proof send failed:', proofText);
+        console.error('Telegram proof send failed:', JSON.stringify(proofTg));
         return res.status(502).json({
           error: 'Telegram could not receive payment proof',
-          details: proofText,
+          details: JSON.stringify(proofTg || {}),
           orderId: safeOrderId,
         });
       }
@@ -344,22 +351,20 @@ async function botSend(text, extra = {}, forceChatId = null) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const defaultChatId = process.env.TELEGRAM_CHAT_ID;
     const finalChatId = forceChatId || extra.chat_id || defaultChatId;
-    
+
     if (!botToken || !finalChatId) return;
 
-    // eslint-disable-next-line no-console
-    console.log(`Bot: Sending message to ${finalChatId}`);
-
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: finalChatId, text, parse_mode: 'HTML', ...extra }),
+    const { chat_id: _ignoreChat, ...restExtra } = extra;
+    const { data } = await tgPostJson(botToken, 'sendMessage', {
+      chat_id: finalChatId,
+      text,
+      parse_mode: 'HTML',
+      ...restExtra,
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
+    if (!data?.ok) {
       // eslint-disable-next-line no-console
-      console.error(`Bot: Failed to send to ${finalChatId}. Status: ${res.status}. Error: ${errText}`);
+      console.error(`Bot: sendMessage failed for ${finalChatId}:`, JSON.stringify(data));
     }
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -371,11 +376,7 @@ async function answerCbq(id, text = '') {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) return;
-    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callback_query_id: id, text }),
-    });
+    await tgAnswerCallbackQuery(botToken, id, text);
   } catch { /* ignore */ }
 }
 
@@ -1101,8 +1102,7 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit') {
   if (!fieldPath) { await botSend(`❌ طريقة دفع غير معروفة: ${methodKey}`); return; }
   const fileId = msg.photo[msg.photo.length - 1].file_id;
   try {
-    const fileRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
-    const fileData = await fileRes.json();
+    const { data: fileData } = await tgGetFile(botToken, fileId);
     if (!fileData?.ok || !fileData?.result?.file_path) throw new Error('getFile failed');
     const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
     const details = await loadPaymentDetails();
@@ -1143,13 +1143,11 @@ async function pollTelegram() {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) return;
 
-    const url = new URL(`https://api.telegram.org/bot${botToken}/getUpdates`);
-    url.searchParams.set('timeout', '30');
-    url.searchParams.set('offset', String(updateOffset));
-
-    const r = await fetch(url, { signal: AbortSignal.timeout(35000) });
-    if (!r.ok) return;
-    const data = await r.json();
+    const { res, data } = await tgGetUpdates(botToken, {
+      timeout: 30,
+      offset: updateOffset,
+    });
+    if (!res.ok) return;
     if (!data?.ok || !Array.isArray(data.result)) return;
 
     for (const u of data.result) {
@@ -1183,8 +1181,9 @@ async function pollTelegram() {
         await handleAdminCommand(msg.text, msg.chat.id);
       }
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[Telegram poll]', e?.message || e);
   } finally {
     isPolling = false;
   }
@@ -1198,13 +1197,10 @@ async function drainPendingUpdates() {
     let fetched = 0;
     // fetch all pending batches until none remain
     for (let i = 0; i < 10; i++) {
-      const url = new URL(`https://api.telegram.org/bot${botToken}/getUpdates`);
-      url.searchParams.set('timeout', '0');
-      url.searchParams.set('limit', '100');
-      if (maxId > 0) url.searchParams.set('offset', String(maxId + 1));
-      const r = await fetch(url);
-      if (!r.ok) break;
-      const data = await r.json();
+      const params = { timeout: 0, limit: 100 };
+      if (maxId > 0) params.offset = maxId + 1;
+      const { res, data } = await tgGetUpdates(botToken, params);
+      if (!res.ok) break;
       if (!data?.ok || !Array.isArray(data.result) || data.result.length === 0) break;
       for (const u of data.result) {
         if ((u.update_id || 0) > maxId) maxId = u.update_id;

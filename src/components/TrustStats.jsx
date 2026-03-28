@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getStats } from '../api';
+import { DEFAULT_STATS } from '../../shared/statsNormalize.js';
 
 const ICONS = {
   customers: (
@@ -33,32 +34,49 @@ function CountUp({ target, suffix = '' }) {
   const [val, setVal] = useState(0);
   const ref = useRef(null);
   const started = useRef(false);
+  const timerRef = useRef(null);
+  const safe = Number.isFinite(Number(target)) ? Math.max(0, Math.floor(Number(target))) : 0;
 
   useEffect(() => {
+    started.current = false;
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !started.current) {
-        started.current = true;
-        const duration = 2200;
-        const steps = 80;
-        const start = Math.max(0, target * 0.1);
-        const inc = (target - start) / steps;
-        let cur = start;
-        setVal(Math.floor(start));
-        const timer = setInterval(() => {
-          cur += inc;
-          if (cur >= target) { setVal(target); clearInterval(timer); }
-          else setVal(Math.floor(cur));
-        }, duration / steps);
+      if (!entry.isIntersecting || started.current) return;
+      started.current = true;
+      const t = safe;
+      if (t === 0) {
+        setVal(0);
+        return;
       }
-    }, { threshold: 0.3 });
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [target]);
+      const duration = 2200;
+      const steps = 80;
+      const start = Math.max(0, t * 0.1);
+      const inc = (t - start) / steps;
+      let cur = start;
+      setVal(Math.floor(start));
+      timerRef.current = setInterval(() => {
+        cur += inc;
+        if (cur >= t) {
+          setVal(t);
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = null;
+        } else {
+          setVal(Math.floor(cur));
+        }
+      }, duration / steps);
+    }, { threshold: 0.2, rootMargin: '40px' });
+    const el = ref.current;
+    if (el) observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [safe]);
 
   return <span ref={ref}>{val.toLocaleString()}{suffix}</span>;
 }
-
-const FALLBACK = { customers: 1200, transactions: 3500, years: 3, satisfaction: 99 };
 
 const STAT_KEYS = [
   { key: 'customers',    iconKey: 'customers',    suffix: '+', labelKey: 'statsCustomers' },
@@ -71,15 +89,17 @@ export default function TrustStats({ t }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    getStats()
-      .then(d => setData(d))
-      .catch(() => setData(FALLBACK));
+    let cancelled = false;
+    getStats().then((d) => {
+      if (!cancelled) setData(d);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   return (
-    <section style={{ width: '100%', padding: '1.5rem 0' }}>
+    <section className="trust-stats-section" style={{ width: '100%', maxWidth: '100%', padding: '1.5rem 0', minWidth: 0 }}>
       <div className="trust-stats-grid" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem',
+        display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '1rem',
       }}>
         {STAT_KEYS.map((s) => (
           <div key={s.key} style={{
@@ -97,7 +117,7 @@ export default function TrustStats({ t }) {
             <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-primary)', lineHeight: 1, minHeight: '1.8rem' }}>
               {data === null
                 ? <span style={{ display: 'inline-block', width: '60px', height: '1.4rem', borderRadius: '6px', background: 'rgba(0,229,255,0.1)', animation: 'pulse 1.4s ease-in-out infinite' }} />
-                : <CountUp key={`${s.key}-${data[s.key]}`} target={data[s.key]} suffix={s.suffix} />
+                : <CountUp key={`${s.key}-${data[s.key]}`} target={data[s.key] ?? DEFAULT_STATS[s.key]} suffix={s.suffix} />
               }
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.4rem', fontWeight: 500 }}>
@@ -108,7 +128,8 @@ export default function TrustStats({ t }) {
       </div>
       <style>{`
         @media (max-width: 640px) {
-          .trust-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .trust-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.75rem !important; }
+          .trust-stats-section { padding-left: 0 !important; padding-right: 0 !important; }
         }
         @keyframes pulse {
           0%, 100% { opacity: 0.4; }

@@ -67,7 +67,7 @@ export default function Header({ t, lang, toggleLang, rate = 1320, links }) {
 
           {/* Desktop actions */}
           <div className="header-desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-            <ActionsGroup t={t} lang={lang} toggleLang={toggleLang} scrollTo={scrollTo} rate={rate} links={links} />
+            <ActionsGroup t={t} lang={lang} toggleLang={toggleLang} scrollTo={scrollTo} links={links} />
           </div>
 
           {/* Mobile right side: lang + hamburger */}
@@ -173,7 +173,7 @@ function Logo({ navigate }) {
 }
 
 /* ── Actions sub-component (pills + lang + CTA) ── */
-function ActionsGroup({ t, lang, toggleLang, scrollTo, rate = 1320, links }) {
+function ActionsGroup({ t, lang, toggleLang, scrollTo, links }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
 

@@ -98,7 +98,22 @@ export default function App() {
   }, []);
 
   if (!configLoaded) {
-    return <div style={{ minHeight: '100vh', background: '#030712' }} />;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        style={{
+          minHeight: '100vh',
+          background: '#030712',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span className="app-shell-loading-spinner" aria-label="Loading" />
+      </div>
+    );
   }
 
   const maintenance = siteConfig?.maintenance;
