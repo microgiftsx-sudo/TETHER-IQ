@@ -33,17 +33,17 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   };
 
   return (
-    <section id="hero" className="hero py-8 flex flex-col items-center justify-center text-center gap-6">
+    <section id="hero" className="hero flex flex-col items-center justify-center text-center gap-6" style={{ padding: '2rem 1rem' }}>
       <div className="hero-content" style={{ maxWidth: '800px' }}>
-        <h1 className="text-accent" style={{ marginBottom: '1rem', textShadow: '0 0 20px rgba(0,229,255,0.4)', lineHeight: 1.2 }}>
+        <h1 className="hero-title text-accent" style={{ marginBottom: '1rem', textShadow: '0 0 20px rgba(0,229,255,0.4)', lineHeight: 1.2 }}>
           {heroTitle} <br/> <span style={{ color: '#fff' }}>USDT</span>
         </h1>
-        <p className="text-muted" style={{ fontSize: '1.2rem', marginBottom: '2rem' }}>
+        <p className="hero-subtitle text-muted">
           {heroSubtitle}
         </p>
       </div>
 
-      <div className="calculator hero-calc glass-panel w-full" style={{ maxWidth: '500px', textAlign: isRtl ? 'right' : 'left', padding: '2rem' }}>
+      <div className="calculator hero-calc glass-panel w-full" style={{ maxWidth: '500px', textAlign: isRtl ? 'right' : 'left' }}>
         <div className="flex justify-between items-center mb-4 text-sm" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
           <span className="text-muted">{t.rateLabel}</span>
           <span className="text-accent" style={{ fontWeight: 'bold' }}>1 USDT = {RATE.toLocaleString()} IQD</span>
@@ -123,6 +123,22 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
           </p>
         )}
       </div>
+      <style>{`
+        .hero-title { font-size: 3.5rem; }
+        .hero-subtitle { fontSize: 1.2rem; margin-bottom: 2rem; }
+        .hero-calc { padding: 2rem; }
+
+        @media (max-width: 900px) {
+          #hero { padding-top: 4rem !important; }
+          .hero-title { font-size: 2.2rem !important; }
+          .hero-subtitle { font-size: 1rem !important; margin-bottom: 1.5rem !important; }
+        }
+        @media (max-width: 600px) {
+          .hero-calc { padding: 1.25rem !important; }
+          .input-control { font-size: 1.25rem !important; height: 50px !important; }
+          .hero-title { font-size: 1.8rem !important; }
+        }
+      `}</style>
     </section>
   );
 }

@@ -319,18 +319,31 @@ function setByPath(obj, p, value) {
   return true;
 }
 
-async function botSend(text, extra = {}) {
+async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!botToken || !chatId) return;
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const defaultChatId = process.env.TELEGRAM_CHAT_ID;
+    const finalChatId = forceChatId || extra.chat_id || defaultChatId;
+    
+    if (!botToken || !finalChatId) return;
+
+    // eslint-disable-next-line no-console
+    console.log(`Bot: Sending message to ${finalChatId}`);
+
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', ...extra }),
+      body: JSON.stringify({ chat_id: finalChatId, text, parse_mode: 'HTML', ...extra }),
     });
-  } catch {
-    // ignore
+
+    if (!res.ok) {
+      const errText = await res.text();
+      // eslint-disable-next-line no-console
+      console.error(`Bot: Failed to send to ${finalChatId}. Status: ${res.status}. Error: ${errText}`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Bot: botSend exception:', err);
   }
 }
 
@@ -372,10 +385,11 @@ function backButton() {
   return { inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]] };
 }
 
-async function sendMainMenu() {
+async function sendMainMenu(forceChatId = null) {
   await botSend(
     '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\nاختر من القائمة:',
-    { reply_markup: mainMenuKeyboard() }
+    { reply_markup: mainMenuKeyboard() },
+    forceChatId
   );
 }
 
@@ -383,7 +397,7 @@ function cancelButton() {
   return { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_input' }]] };
 }
 
-async function showRateMenu() {
+async function showRateMenu(forceChatId = null) {
   const details = await loadPaymentDetails();
   const cfg = details?.rateConfig || {};
   const rate = await computeRate(details);
@@ -394,33 +408,36 @@ async function showRateMenu() {
     { reply_markup: { inline_keyboard: [
       [{ text: '📌 تعيين سعر ثابت', callback_data: 'rate_fixed' }, { text: '🔄 وضع عائم', callback_data: 'rate_float' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showQrMenu() {
+async function showQrMenu(forceChatId = null) {
   await botSend(
     '📷 <b>إضافة باركود QR</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
     { reply_markup: { inline_keyboard: [
       [{ text: '💚 زين كاش', callback_data: 'qr_zain' }, { text: '🏦 المصرف الأول', callback_data: 'qr_fib' }],
       [{ text: '💳 ماستر كارد', callback_data: 'qr_mc' }, { text: '🌐 آسيا حوالة', callback_data: 'qr_asia' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showEditMenu() {
+async function showEditMenu(forceChatId = null) {
   await botSend(
     '✏️ <b>تعديل البيانات</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
     { reply_markup: { inline_keyboard: [
       [{ text: '💚 زين كاش', callback_data: 'edit_zain' }, { text: '🌐 آسيا حوالة', callback_data: 'edit_asia' }],
       [{ text: '🏦 المصرف الأول', callback_data: 'edit_fib' }, { text: '💳 ماستر كارد', callback_data: 'edit_mc' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showTimerMenu() {
+async function showTimerMenu(forceChatId = null) {
   const details = await loadPaymentDetails();
   await botSend(
     `⏱️ <b>وقت انتهاء الدفع</b>\n━━━━━━━━━━━━━━━\nالوقت الحالي: <b>${details.paymentExpiryMinutes} دقيقة</b>\n\nاختر:`,
@@ -428,11 +445,12 @@ async function showTimerMenu() {
       [{ text: '10 دق', callback_data: 'timer_10' }, { text: '15 دق', callback_data: 'timer_15' }, { text: '20 دق', callback_data: 'timer_20' }],
       [{ text: '30 دق', callback_data: 'timer_30' }, { text: '45 دق', callback_data: 'timer_45' }, { text: '⌨️ تخصيص', callback_data: 'timer_custom' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showSiteMenu() {
+async function showSiteMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const maint = cfg.maintenance?.enabled ? '🔴 مفعّل' : '🟢 مطفأ';
   await botSend(
@@ -441,11 +459,12 @@ async function showSiteMenu() {
       [{ text: '❓ الأسئلة الشائعة', callback_data: 'site_faq' }, { text: '🏠 نص الهيرو', callback_data: 'site_hero' }],
       [{ text: '🔗 الروابط', callback_data: 'site_links' }, { text: '🔧 وضع الصيانة', callback_data: 'site_maint' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showFaqMenu() {
+async function showFaqMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const faqs = cfg.faq || [];
   const rows = faqs.map((f, i) => [
@@ -456,11 +475,12 @@ async function showFaqMenu() {
   rows.push([{ text: '🔙 رجوع', callback_data: 'menu_site' }]);
   await botSend(
     `❓ <b>الأسئلة الشائعة</b>\n━━━━━━━━━━━━━━━\nعدد الأسئلة: ${faqs.length}`,
-    { reply_markup: { inline_keyboard: rows } }
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
   );
 }
 
-async function showHeroMenu() {
+async function showHeroMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const h = cfg.hero || {};
   await botSend(
@@ -470,7 +490,8 @@ async function showHeroMenu() {
       [{ text: '✏️ وصف عربي', callback_data: 'sf_hero_subtitleAr' }, { text: '✏️ وصف إنجليزي', callback_data: 'sf_hero_subtitleEn' }],
       [{ text: '✏️ إعلان عربي', callback_data: 'sf_hero_promoAr' }, { text: '✏️ إعلان إنجليزي', callback_data: 'sf_hero_promoEn' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
@@ -487,7 +508,7 @@ async function showLinksMenu() {
   );
 }
 
-async function showMaintenanceMenu() {
+async function showMaintenanceMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const enabled = cfg.maintenance?.enabled;
   await botSend(
@@ -496,11 +517,12 @@ async function showMaintenanceMenu() {
       [{ text: enabled ? '✅ تعطيل الصيانة' : '🔴 تفعيل الصيانة', callback_data: 'maint_toggle' }],
       [{ text: '✏️ رسالة عربية', callback_data: 'sf_maint_messageAr' }, { text: '✏️ رسالة إنجليزية', callback_data: 'sf_maint_messageEn' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function showTestimonialsMenu() {
+async function showTestimonialsMenu(forceChatId = null) {
   const list = await loadTestimonials();
   const rows = list.map((r, i) => [
     { text: `${i + 1}. ${r.nameAr} — ${'⭐'.repeat(r.stars)}`, callback_data: `rev_view_${r.id}` },
@@ -510,11 +532,12 @@ async function showTestimonialsMenu() {
   rows.push([{ text: '🔙 رجوع', callback_data: 'menu_main' }]);
   await botSend(
     `⭐ <b>التقييمات</b>\n━━━━━━━━━━━━━━━\nعدد التقييمات: ${list.length}`,
-    { reply_markup: { inline_keyboard: rows } }
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
   );
 }
 
-async function showStatsMenu() {
+async function showStatsMenu(forceChatId = null) {
   const s = await loadStats();
   await botSend(
     `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
@@ -524,14 +547,15 @@ async function showStatsMenu() {
       [{ text: '🏆 تعديل سنوات الخبرة', callback_data: 'stat_years' }],
       [{ text: '⭐ تعديل نسبة الرضا', callback_data: 'stat_satisfaction' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
-async function handleCallbackQuery(data) {
+async function handleCallbackQuery(data, incomingChatId) {
   // ── Main navigation ─────────────────────────────────
-  if (data === 'menu_main')  { pendingState = null; await sendMainMenu(); return; }
-  if (data === 'cancel_input') { pendingState = null; await sendMainMenu(); return; }
+  if (data === 'menu_main')  { pendingState = null; await sendMainMenu(incomingChatId); return; }
+  if (data === 'cancel_input') { pendingState = null; await sendMainMenu(incomingChatId); return; }
 
   if (data === 'menu_pay') {
     const details = await loadPaymentDetails();
@@ -552,10 +576,10 @@ async function handleCallbackQuery(data) {
     return;
   }
 
-  if (data === 'menu_rate')  { await showRateMenu();  return; }
-  if (data === 'menu_qr')    { await showQrMenu();    return; }
-  if (data === 'menu_edit')  { await showEditMenu();  return; }
-  if (data === 'menu_timer') { await showTimerMenu(); return; }
+  if (data === 'menu_rate')  { await showRateMenu(incomingChatId);  return; }
+  if (data === 'menu_qr')    { await showQrMenu(incomingChatId);    return; }
+  if (data === 'menu_edit')  { await showEditMenu(incomingChatId);  return; }
+  if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
@@ -658,13 +682,13 @@ async function handleCallbackQuery(data) {
   }
 
   // ── Site settings ────────────────────────────────────
-  if (data === 'menu_site')         { await showSiteMenu();         return; }
-  if (data === 'site_faq')          { await showFaqMenu();          return; }
-  if (data === 'site_hero')         { await showHeroMenu();         return; }
-  if (data === 'site_links')        { await showLinksMenu();        return; }
-  if (data === 'site_maint')        { await showMaintenanceMenu();  return; }
-  if (data === 'menu_testimonials') { await showTestimonialsMenu(); return; }
-  if (data === 'menu_stats')        { await showStatsMenu();        return; }
+  if (data === 'menu_site')         { await showSiteMenu(incomingChatId);         return; }
+  if (data === 'site_faq')          { await showFaqMenu(incomingChatId);          return; }
+  if (data === 'site_hero')         { await showHeroMenu(incomingChatId);         return; }
+  if (data === 'site_links')        { await showLinksMenu(incomingChatId);        return; }
+  if (data === 'site_maint')        { await showMaintenanceMenu(incomingChatId);  return; }
+  if (data === 'menu_testimonials') { await showTestimonialsMenu(incomingChatId); return; }
+  if (data === 'menu_stats')        { await showStatsMenu(incomingChatId);        return; }
 
   // ── Maintenance toggle ───────────────────────────────
   if (data === 'maint_toggle') {
@@ -814,9 +838,12 @@ function maybeAutoConfigureFromMessage(msg) {
   }
 }
 
-async function handleAdminCommand(text) {
+async function handleAdminCommand(text, incomingChatId) {
   const raw = String(text || '').trim();
   const trimmed = raw.toLowerCase();
+
+  // eslint-disable-next-line no-console
+  console.log(`Bot Command Received: "${raw}" from Chat: ${incomingChatId}`);
 
   // ── Handle pending input state ──────────────────────
   if (pendingState) {
@@ -826,7 +853,7 @@ async function handleAdminCommand(text) {
     if (st.action === 'rateFixed') {
       const val = Number(raw);
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
-        await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() });
+        await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
         return;
       }
@@ -835,7 +862,7 @@ async function handleAdminCommand(text) {
       details.rateConfig.mode = 'fixed';
       details.rateConfig.fixedRate = val;
       await savePaymentDetails(details);
-      await botSend(`✅ السعر الثابت: <b>${val} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } });
+      await botSend(`✅ السعر الثابت: <b>${val} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } }, incomingChatId);
       return;
     }
 
@@ -936,14 +963,14 @@ async function handleAdminCommand(text) {
     if (st.action === 'setStat') {
       const val = Number(raw);
       if (!Number.isFinite(val) || val < 0) {
-        await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() });
+        await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
         return;
       }
       const stats = await loadStats();
       stats[st.field] = val;
       await saveStats(stats);
-      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${val}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الإحصائيات', callback_data: 'menu_stats' }]] } });
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${val}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الإحصائيات', callback_data: 'menu_stats' }]] } }, incomingChatId);
       return;
     }
 
@@ -953,13 +980,13 @@ async function handleAdminCommand(text) {
   if (!trimmed.startsWith('/')) return;
 
   if (trimmed === '/help' || trimmed === '/start') {
-    await sendMainMenu();
+    await sendMainMenu(incomingChatId);
     return;
   }
 
   if (trimmed === '/pay' || trimmed === '/pay@' + (process.env.BOT_USERNAME || '').toLowerCase()) {
     const details = await loadPaymentDetails();
-    await botSend(JSON.stringify(details, null, 2));
+    await botSend(JSON.stringify(details, null, 2), {}, incomingChatId);
     return;
   }
 
@@ -1015,7 +1042,7 @@ async function handleAdminCommand(text) {
     const modeText = cfg.mode === 'float'
       ? `🔄 عائم (Float)\nBase: ${cfg.floatBase} IQD/USD\nOffset: ${cfg.floatOffset}`
       : `📌 ثابت (Fixed): ${cfg.fixedRate} IQD/USDT`;
-    await botSend(`💱 Rate Mode: ${modeText}\n\n📊 السعر الحالي: ${rate} IQD/USDT`);
+    await botSend(`💱 Rate Mode: ${modeText}\n\n📊 السعر الحالي: ${rate} IQD/USDT`, {}, incomingChatId);
     return;
   }
 
@@ -1035,7 +1062,7 @@ async function handleAdminCommand(text) {
     return;
   }
 
-  await sendMainMenu();
+  await sendMainMenu(incomingChatId);
 }
 
 const QR_METHOD_MAP = {
@@ -1113,7 +1140,10 @@ async function pollTelegram() {
         const cbq = u.callback_query;
         await answerCbq(cbq.id);
         if (adminIds.has(String(cbq.from?.id))) {
-          await handleCallbackQuery(cbq.data);
+          await handleCallbackQuery(cbq.data, cbq.message?.chat?.id);
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(`Bot: Unauthorized callback attempt from ${cbq.from?.id} in chat ${cbq.message?.chat?.id}`);
         }
         continue;
       }
@@ -1122,11 +1152,15 @@ async function pollTelegram() {
       if (!msg) continue;
       if ((msg.date || 0) < SERVER_START_TS) continue;
       maybeAutoConfigureFromMessage(msg);
-      if (!isAdminMessage(msg)) continue;
+      if (!isAdminMessage(msg)) {
+        // eslint-disable-next-line no-console
+        console.log(`Bot: Non-admin message from ${msg.from?.id} (${msg.from?.username}) in chat ${msg.chat?.id}`);
+        continue;
+      }
       if (msg.photo) {
         await handlePhotoMessage(msg);
       } else if (msg.text) {
-        await handleAdminCommand(msg.text);
+        await handleAdminCommand(msg.text, msg.chat.id);
       }
     }
   } catch {

@@ -47,9 +47,18 @@ export default function StickyMobileCTA({ t, lang, rate, usdtAmount }) {
 
       <style>{`
         @media (max-width: 900px) {
-          .sticky-mobile-cta { display: flex !important; }
+          .sticky-mobile-cta { 
+            display: flex !important; 
+            padding: 0.6rem 1rem !important;
+            height: 65px;
+          }
           /* Push footer content above sticky bar */
-          body { padding-bottom: 72px; }
+          body { padding-bottom: 65px; }
+        }
+        @media (max-width: 450px) {
+          .sticky-mobile-cta button { font-size: 0.85rem !important; padding: 0.6rem 0.8rem !important; }
+          .sticky-mobile-cta div div:first-child { font-size: 0.65rem !important; }
+          .sticky-mobile-cta div div:last-child { font-size: 0.85rem !important; }
         }
       `}</style>
     </>

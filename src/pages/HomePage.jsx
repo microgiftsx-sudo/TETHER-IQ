@@ -58,7 +58,22 @@ export default function HomePage() {
 
       <StickyMobileCTA t={t} lang={lang} rate={rate} usdtAmount={usdtAmount} />
       <LiveActivity t={t} lang={lang} />
-      <Footer t={t} lang={lang} />
+      <footer style={{ width: '100%' }}>
+        <Footer t={t} lang={lang} />
+      </footer>
+
+      <style>{`
+        .container { 
+          width: 100%; 
+          max-width: 1200px; 
+          margin: 0 auto; 
+          padding: 0 1.5rem; 
+        }
+        @media (max-width: 600px) {
+          .container { padding: 0 1rem; }
+          main { gap: 1.5rem !important; py: 4 !important; }
+        }
+      `}</style>
     </div>
   );
 }
