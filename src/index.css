@@ -206,13 +206,24 @@ h3 { font-size: 1.25rem; }
     padding-bottom: 0.75rem !important;
   }
 
-  /* Telegram float: icon only */
+  /* Telegram float: icon only — one horizontal edge only (inline sets L/R; both = full-width stretch) */
   .tg-float-label { display: none; }
   .tg-float {
     padding: 0.75rem !important;
     border-radius: 50% !important;
     bottom: 1rem !important;
+    width: auto !important;
+    max-width: max-content !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+  [dir="ltr"] .tg-float {
+    left: auto !important;
+    right: 1rem !important;
+  }
+  [dir="rtl"] .tg-float {
     left: 1rem !important;
+    right: auto !important;
   }
 
   /* Home: sticky CTA — keep Telegram above the bar */
