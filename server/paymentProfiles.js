@@ -3,11 +3,12 @@
  * The site shows `currentProfileId`; only methods with methodEnabled[key] !== false are exposed in the API.
  */
 
-export const METHOD_KEYS = ['zainCash', 'asiaHawala', 'fib', 'mastercard'];
+export const METHOD_KEYS = ['fastPay', 'zainCash', 'asiaHawala', 'fib', 'mastercard'];
 
 export function defaultMethodEnabled() {
   return {
     zainCash: true,
+    fastPay: true,
     asiaHawala: true,
     fib: true,
     mastercard: true,
@@ -17,6 +18,7 @@ export function defaultMethodEnabled() {
 export function defaultEmptyMethods() {
   return {
     zainCash: { number: '', qrImage: '' },
+    fastPay: { number: '', qrImage: '' },
     asiaHawala: { number: '', qrImage: '' },
     fib: { accountNumber: '', accountName: '', qrImage: '' },
     mastercard: { cardNumber: '', cardHolder: '', qrImage: '' },
@@ -29,7 +31,7 @@ export function migratePaymentDetails(raw) {
   }
 
   const id = 'profile_default';
-  const profile = {
+  const profile = normalizeProfile({
     id,
     nameAr: 'البروفايل الافتراضي',
     nameEn: 'Default profile',
@@ -37,7 +39,7 @@ export function migratePaymentDetails(raw) {
     methods: raw?.methods && typeof raw.methods === 'object'
       ? JSON.parse(JSON.stringify(raw.methods))
       : defaultEmptyMethods(),
-  };
+  });
 
   const details = {
     paymentExpiryMinutes: raw?.paymentExpiryMinutes ?? 15,

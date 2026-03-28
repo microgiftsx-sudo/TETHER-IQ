@@ -25,6 +25,7 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
   };
 
   const paymentMethods = [
+    { id: 'fastpay', label: 'FastPay', labelAr: 'فاست باي' },
     { id: 'zain', label: 'Zain Cash', labelAr: 'زين كاش' },
     { id: 'fib', label: 'FIB', labelAr: 'المصرف الأول' },
     { id: 'mastercard', label: 'MasterCard', labelAr: 'ماستر كارد' },

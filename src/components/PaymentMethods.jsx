@@ -2,6 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getPaymentDetails } from '../api';
 
 const ALL = [
+  {
+    key: 'fastPay',
+    name: 'FastPay',
+    nameAr: 'فاست باي',
+    icon: (
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden>
+        <circle cx="24" cy="24" r="22" fill="rgba(0,229,255,0.15)" stroke="#00E5FF" strokeWidth="2" />
+        <path d="M26 10L14 26h8l-2 12 14-18h-8l0-10z" fill="#00E5FF" />
+      </svg>
+    ),
+  },
   { key: 'zainCash', name: 'Zain Cash', nameAr: 'زين كاش', image: '/zaincash.png' },
   {
     key: 'mastercard',

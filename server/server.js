@@ -34,8 +34,6 @@ import {
   appendOrderEvent,
   loadVisits,
   loadOrders,
-  sanitizeVisitPublic,
-  sanitizeOrderPublic,
   getRecentVisits,
   getRecentOrders,
   buildFullCrmSummary,
@@ -48,6 +46,7 @@ import {
 
 const PAYMENT_METHOD_LABEL_TO_KEY = {
   'Zain Cash': 'zainCash',
+  FastPay: 'fastPay',
   FIB: 'fib',
   MasterCard: 'mastercard',
   'Asia Hawala': 'asiaHawala',
@@ -225,19 +224,6 @@ app.post('/api/track-visit', async (req, res) => {
     const rec = buildVisitRecord(body, req);
     await appendVisit(VISITS_PATH, rec);
     res.json({ ok: true, id: rec.id });
-  } catch (e) {
-    res.status(500).json({ error: String(e?.message || e) });
-  }
-});
-
-app.get('/api/activity/recent', async (req, res) => {
-  try {
-    const lim = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
-    const visits = await loadVisits(VISITS_PATH);
-    const orders = await loadOrders(ORDERS_CRM_PATH);
-    const recentV = getRecentVisits(visits, lim).map(sanitizeVisitPublic);
-    const recentO = getRecentOrders(orders, lim).map(sanitizeOrderPublic);
-    res.json({ visits: recentV, orders: recentO });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -557,6 +543,7 @@ function helpText() {
     '/ratefloat 1310 40 — سعر عائم (سعر Binance × 1310 + 40)',
     '',
     '📷 باركود QR (أرسل صورة مع caption):',
+    '   qr fastpay   — باركود FastPay',
     '   qr zain      — باركود زين كاش',
     '   qr fib       — باركود المصرف الأول',
     '   qr mastercard — باركود ماستر كارد',
@@ -566,6 +553,7 @@ function helpText() {
     'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
     '',
     '✏️ تعديل البيانات:',
+    '/set methods.fastPay.number 07...',
     '/set methods.zainCash.number 07714740129',
     '/set methods.fib.accountNumber 1234567890',
     '/set methods.fib.accountName TetherIQ Exchange',
@@ -738,8 +726,9 @@ async function showQrMenu(forceChatId = null) {
   await botSend(
     '📷 <b>إضافة باركود QR</b>\nيتم الحفظ للبروفايل الذي تعدّله حالياً.\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
     { reply_markup: { inline_keyboard: [
-      [{ text: '💚 زين كاش', callback_data: 'qr_zain' }, { text: '🏦 المصرف الأول', callback_data: 'qr_fib' }],
-      [{ text: '💳 ماستر كارد', callback_data: 'qr_mc' }, { text: '🌐 آسيا حوالة', callback_data: 'qr_asia' }],
+      [{ text: '⚡ FastPay', callback_data: 'qr_fastpay' }, { text: '💚 زين كاش', callback_data: 'qr_zain' }],
+      [{ text: '🏦 المصرف الأول', callback_data: 'qr_fib' }, { text: '💳 ماستر كارد', callback_data: 'qr_mc' }],
+      [{ text: '🌐 آسيا حوالة', callback_data: 'qr_asia' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
     ] } },
     forceChatId
@@ -780,6 +769,7 @@ async function showMethodToggleMenu(profileIndex, forceChatId = null) {
   const p = details.profiles[profileIndex];
   if (!p) return;
   const labels = {
+    fastPay: '⚡ FastPay',
     zainCash: '💚 زين كاش',
     asiaHawala: '🌐 آسيا حوالة',
     fib: '🏦 FIB',
@@ -804,8 +794,9 @@ async function showEditMenu(forceChatId = null) {
   await botSend(
     `✏️ <b>تعديل البيانات</b>\nالبروفايل: <b>${p.nameAr}</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:`,
     { reply_markup: { inline_keyboard: [
-      [{ text: '💚 زين كاش', callback_data: 'edit_zain' }, { text: '🌐 آسيا حوالة', callback_data: 'edit_asia' }],
-      [{ text: '🏦 المصرف الأول', callback_data: 'edit_fib' }, { text: '💳 ماستر كارد', callback_data: 'edit_mc' }],
+      [{ text: '⚡ FastPay', callback_data: 'edit_fastpay' }, { text: '💚 زين كاش', callback_data: 'edit_zain' }],
+      [{ text: '🌐 آسيا حوالة', callback_data: 'edit_asia' }, { text: '🏦 المصرف الأول', callback_data: 'edit_fib' }],
+      [{ text: '💳 ماستر كارد', callback_data: 'edit_mc' }],
       [{ text: '🔙 اختيار بروفايل آخر', callback_data: 'menu_edit' }],
       [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
     ] } },
@@ -951,6 +942,15 @@ async function handleCallbackQuery(data, incomingChatId) {
     const p = details.profiles[i];
     if (!p) return;
     const active = details.currentProfileId === p.id;
+    const rows = [
+      [{ text: '✏️ تعديل بيانات هذا البروفايل', callback_data: `prof_edit_go_${i}` }],
+      [{ text: '⚙️ تفعيل/إيقاف طرق على الموقع', callback_data: `prof_methods_${i}` }],
+      [{ text: '🌐 جعله البروفايل النشط للموقع', callback_data: `prof_platform_${i}` }],
+    ];
+    if (details.profiles.length > 1) {
+      rows.push([{ text: '🗑️ حذف هذا البروفايل', callback_data: `prof_del_ask_${i}` }]);
+    }
+    rows.push([{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]);
     await botSend(
       [
         `👤 <b>${p.nameAr}</b>`,
@@ -958,12 +958,54 @@ async function handleCallbackQuery(data, incomingChatId) {
         '',
         active ? '✅ <b>نشط على الموقع</b> 🌐 (العملاء يرون حسابات هذا البروفايل)' : 'ℹ️ غير نشط على الموقع — استخدم «جعله النشط» للتبديل.',
       ].join('\n'),
+      { reply_markup: { inline_keyboard: rows } },
+      incomingChatId
+    );
+    return;
+  }
+
+  if (/^prof_del_ask_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_del_ask_'.length));
+    const details = await loadPaymentDetails();
+    const p = details.profiles[i];
+    if (!p) return;
+    if (details.profiles.length <= 1) {
+      await botSend('❌ لا يمكن حذف <b>آخر بروفايل</b>. أنشئ بروفايلاً آخراً أولاً ثم احذف هذا.', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: `prof_sum_${i}` }]] } }, incomingChatId);
+      return;
+    }
+    await botSend(
+      `🗑️ <b>تأكيد الحذف</b>\nسيتم حذف البروفايل «<b>${escapeTelegramHtml(p.nameAr)}</b>» وجميع حساباته المرتبطة به نهائياً.\nهل أنت متأكد؟`,
       { reply_markup: { inline_keyboard: [
-        [{ text: '✏️ تعديل بيانات هذا البروفايل', callback_data: `prof_edit_go_${i}` }],
-        [{ text: '⚙️ تفعيل/إيقاف طرق على الموقع', callback_data: `prof_methods_${i}` }],
-        [{ text: '🌐 جعله البروفايل النشط للموقع', callback_data: `prof_platform_${i}` }],
-        [{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }],
+        [{ text: '✅ نعم، احذف', callback_data: `prof_del_yes_${i}` }],
+        [{ text: '❌ إلغاء', callback_data: `prof_sum_${i}` }],
       ] } },
+      incomingChatId
+    );
+    return;
+  }
+
+  if (/^prof_del_yes_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_del_yes_'.length));
+    const details = await loadPaymentDetails();
+    if (details.profiles.length <= 1) {
+      await botSend('❌ لا يمكن حذف آخر بروفايل.', {}, incomingChatId);
+      return;
+    }
+    const victim = details.profiles[i];
+    if (!victim) return;
+    const victimId = victim.id;
+    const nextProfiles = details.profiles.filter((_, idx) => idx !== i);
+    let nextCurrent = details.currentProfileId;
+    if (details.currentProfileId === victimId) {
+      nextCurrent = nextProfiles[0]?.id;
+    }
+    for (const [cid, ctx] of [...adminProfileContext.entries()]) {
+      if (ctx.profileId === victimId) adminProfileContext.delete(cid);
+    }
+    await savePaymentDetails({ ...details, profiles: nextProfiles, currentProfileId: nextCurrent });
+    await botSend(
+      `✅ تم حذف البروفايل <b>${escapeTelegramHtml(victim.nameAr)}</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } },
       incomingChatId
     );
     return;
@@ -999,10 +1041,12 @@ async function handleCallbackQuery(data, incomingChatId) {
     return;
   }
 
-  if (/^prof_mten_\d+_(zainCash|asiaHawala|fib|mastercard)$/.test(data)) {
-    const m = data.match(/^prof_mten_(\d+)_(zainCash|asiaHawala|fib|mastercard)$/);
+  if (/^prof_mten_\d+_/.test(data)) {
+    const m = data.match(/^prof_mten_(\d+)_(.+)$/);
+    if (!m) return;
     const i = Number(m[1]);
     const methodKey = m[2];
+    if (!METHOD_KEYS.includes(methodKey)) return;
     const details = await loadPaymentDetails();
     const prof = details.profiles[i];
     if (!prof) return;
@@ -1029,7 +1073,8 @@ async function handleCallbackQuery(data, incomingChatId) {
         '━━━━━━━━━━━━━━━',
         `💱 السعر: <b>${rate} IQD/USDT</b>`,
         `⏱️ وقت الانتهاء: <b>${details.paymentExpiryMinutes} دقيقة</b>`,
-        '', '🔷 <b>زين كاش:</b> ' + (m.zainCash?.number || '-'),
+        '', '🔷 <b>FastPay:</b> ' + (m.fastPay?.number || '-'),
+        '🔷 <b>زين كاش:</b> ' + (m.zainCash?.number || '-'),
         '🔷 <b>آسيا حوالة:</b> ' + (m.asiaHawala?.number || '-'),
         '🔷 <b>المصرف الأول:</b> ' + (m.fib?.accountNumber || '-'),
         '🔷 <b>ماستر كارد:</b> ' + (m.mastercard?.cardNumber || '-'),
@@ -1058,7 +1103,13 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   // ── QR ──────────────────────────────────────────────
-  const qrMap = { qr_zain: ['zain','زين كاش','edit_zain'], qr_fib: ['fib','المصرف الأول','edit_fib'], qr_mc: ['mastercard','ماستر كارد','edit_mc'], qr_asia: ['asia','آسيا حوالة','edit_asia'] };
+  const qrMap = {
+    qr_fastpay: ['fastpay', 'FastPay', 'edit_fastpay'],
+    qr_zain: ['zain', 'زين كاش', 'edit_zain'],
+    qr_fib: ['fib', 'المصرف الأول', 'edit_fib'],
+    qr_mc: ['mastercard', 'ماستر كارد', 'edit_mc'],
+    qr_asia: ['asia', 'آسيا حوالة', 'edit_asia'],
+  };
   if (qrMap[data]) {
     const [method, label, backTo] = qrMap[data];
     const details = await loadPaymentDetails();
@@ -1069,6 +1120,20 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   // ── Edit method selection ────────────────────────────
+  if (data === 'edit_fastpay') {
+    const details = await loadPaymentDetails();
+    const d = getEditingProfile(details, incomingChatId);
+    if (!d?.methods) return;
+    await botSend(
+      `✏️ <b>FastPay</b>\nالرقم: <code>${d.methods?.fastPay?.number || '-'}</code>\nالباركود: ${d.methods?.fastPay?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
+      { reply_markup: { inline_keyboard: [
+        [{ text: '📱 تغيير الرقم', callback_data: 'ef_fastpay_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_fastpay' }],
+        [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
+      ] } },
+      incomingChatId
+    );
+    return;
+  }
   if (data === 'edit_zain') {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
@@ -1130,6 +1195,7 @@ async function handleCallbackQuery(data, incomingChatId) {
 
   // ── Edit fields (await text input) ──────────────────
   const fieldMap = {
+    ef_fastpay_num: ['fastPay.number',       'رقم FastPay',         'menu_edit'],
     ef_zain_num:   ['zainCash.number',       'رقم زين كاش',        'menu_edit'],
     ef_asia_num:   ['asiaHawala.number',     'رقم آسيا حوالة',      'menu_edit'],
     ef_fib_num:    ['fib.accountNumber',     'رقم حساب FIB',        'edit_fib'],
@@ -1665,6 +1731,8 @@ async function handleAdminCommand(text, incomingChatId) {
 }
 
 const QR_METHOD_MAP = {
+  fastpay: 'fastPay.qrImage',
+  fast: 'fastPay.qrImage',
   zain: 'zainCash.qrImage',
   zaincash: 'zainCash.qrImage',
   fib: 'fib.qrImage',
@@ -1714,7 +1782,7 @@ async function handlePhotoMessage(msg) {
   // ── Fallback: caption-based ──────────────────────────
   const caption = String(msg.caption || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!caption.startsWith('qr ') && !Object.keys(QR_METHOD_MAP).includes(caption)) {
-    await botSend('📷 لإضافة باركود اضغط الزر في القائمة أو أرسل صورة مع caption:\n<code>qr zain</code> / <code>qr fib</code> / <code>qr mastercard</code> / <code>qr asia</code>', {}, msg.chat?.id);
+    await botSend('📷 لإضافة باركود اضغط الزر في القائمة أو أرسل صورة مع caption:\n<code>qr fastpay</code> / <code>qr zain</code> / <code>qr fib</code> / <code>qr mastercard</code> / <code>qr asia</code>', {}, msg.chat?.id);
     return;
   }
   const key = caption.startsWith('qr ') ? caption.slice(3).trim().replace(/\s+/g, '') : caption;

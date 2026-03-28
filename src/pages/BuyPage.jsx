@@ -4,7 +4,6 @@ import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import RecentSiteActivity from '../components/RecentSiteActivity';
 
 function useCountdown(targetMs) {
   const [now, setNow] = useState(Date.now());
@@ -43,6 +42,7 @@ export default function BuyPage() {
   const [paymentDetail, setPaymentDetail] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
   const [paymentProof, setPaymentProof] = useState(null);
+  const [fastPayQrFailed, setFastPayQrFailed] = useState(false);
   const [zainQrFailed, setZainQrFailed] = useState(false);
   const [fibQrFailed, setFibQrFailed] = useState(false);
   const [mastercardQrFailed, setMastercardQrFailed] = useState(false);
@@ -77,6 +77,7 @@ export default function BuyPage() {
 
   const methodOrder = useMemo(
     () => [
+      { key: 'fastPay', label: 'FastPay', labelAr: 'فاست باي' },
       { key: 'zainCash', label: 'Zain Cash', labelAr: 'زين كاش' },
       { key: 'fib', label: 'FIB', labelAr: 'المصرف الأول' },
       { key: 'mastercard', label: 'MasterCard', labelAr: 'ماستر كارد' },
@@ -98,6 +99,7 @@ export default function BuyPage() {
     if (!ok) setPaymentMethod(paymentMethodOptions[0].label);
   }, [paymentMethod, paymentMethodOptions]);
 
+  useEffect(() => { setFastPayQrFailed(false); }, [pm?.fastPay?.qrImage]);
   useEffect(() => { setZainQrFailed(false); }, [pm?.zainCash?.qrImage]);
   useEffect(() => { setFibQrFailed(false); }, [pm?.fib?.qrImage]);
   useEffect(() => { setMastercardQrFailed(false); }, [pm?.mastercard?.qrImage]);
@@ -301,6 +303,39 @@ export default function BuyPage() {
             {stage === 2 && (
             <div className="instruction-card" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
               <h3 className="text-accent mb-3" style={{ fontSize: '1rem' }}>{t.confirmPayment}</h3>
+
+              {paymentMethod === 'FastPay' && (
+                <div className="text-center">
+                  <p className="text-sm mb-4">{t.fastPayInstructions}</p>
+                  {pm?.fastPay?.qrImage && !fastPayQrFailed && (
+                    <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', display: 'inline-block', marginBottom: '1rem' }}>
+                      <img
+                        src={pm.fastPay.qrImage}
+                        alt="FastPay QR"
+                        onError={() => setFastPayQrFailed(true)}
+                        style={{ width: '150px', height: '150px', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+                  {fastPayQrFailed && (
+                    <p className="text-muted text-sm mb-4">
+                      {isRtl ? 'تعذر تحميل صورة QR، استخدم الرقم مباشرة.' : 'QR image unavailable, use the number directly.'}
+                    </p>
+                  )}
+                  {pm?.fastPay?.number && (
+                    <div className="flex justify-center items-center gap-2 text-xl font-bold text-accent">
+                      <span>{pm.fastPay.number}</span>
+                      <button type="button" className="copy-btn" onClick={() => copyText(pm.fastPay.number, 'fastpay')} aria-label={isRtl ? 'نسخ الرقم' : 'Copy number'}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                          <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                          <rect x="2" y="2" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {copied === 'fastpay' && <div className="copy-toast">{isRtl ? 'تم النسخ' : 'Copied'}</div>}
+                </div>
+              )}
 
               {paymentMethod === 'Zain Cash' && (
                 <div className="text-center">
@@ -541,9 +576,6 @@ export default function BuyPage() {
         )}
       </div>
     </section>
-    <div className="container py-6" style={{ maxWidth: 900 }}>
-      <RecentSiteActivity t={t} lang={lang} />
-    </div>
     </main>
     <Footer t={t} lang={lang} />
     </div>

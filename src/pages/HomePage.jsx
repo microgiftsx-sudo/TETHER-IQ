@@ -12,8 +12,6 @@ import LiveActivity from '../components/LiveActivity';
 import TrustStats from '../components/TrustStats';
 import Testimonials from '../components/Testimonials';
 import StickyMobileCTA from '../components/StickyMobileCTA';
-import RecentSiteActivity from '../components/RecentSiteActivity';
-
 export default function HomePage() {
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
   const t = translations[lang];
@@ -58,7 +56,6 @@ export default function HomePage() {
         <Steps t={t} lang={lang} />
         <PaymentMethods t={t} lang={lang} />
         <Testimonials t={t} lang={lang} />
-        <RecentSiteActivity t={t} lang={lang} />
         <FAQ t={t} lang={lang} faqData={siteConfig?.faq} />
         <ContactSection t={t} lang={lang} contactLink={siteConfig?.links?.contact} />
       </main>
