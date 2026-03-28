@@ -626,32 +626,39 @@ async function sendCrmDocument(chatId, filename, buffer, caption = '') {
 async function showCrmHome(forceChatId = null) {
   const visits = await loadVisits(VISITS_PATH);
   const orders = await loadOrders(ORDERS_CRM_PATH);
-  const stats = await loadStats();
   const vSt = computeVisitStats(visits);
   const oSt = computeOrderStats(orders);
-  const topPaths = vSt.topPaths.map((p) => `${p.path}: ${p.count}`).join(', ') || '—';
-  const webNote = '\n\n🌐 <b>لوحة الويب:</b> مسار <code>/admin/crm</code>';
+
+  // Clean top paths display
+  const topPaths = vSt.topPaths
+    .map((p) => `• <code>${p.path}</code> : ${p.count}`)
+    .join('\n') || '—';
+
   const text = [
-    '📈 <b>CRM — لوحة المتابعة</b>',
+    '📈 <b>CRM — ملخص النشاط</b>',
     '━━━━━━━━━━━━━━━',
-    `<b>زيارات اليوم:</b> ${vSt.visitsToday}`,
-    `<b>زيارات (7 أيام):</b> ${vSt.visitsWeek} · زوّار مميّز: ${vSt.uniqueVisitorsWeek}`,
-    `<b>إجمالي الزيارات المخزّنة:</b> ${vSt.total}`,
-    `<b>أكثر المسارات:</b> ${escapeTelegramHtml(topPaths)}`,
+    `👥 <b>الزيارات:</b> ${vSt.visitsToday} اليوم · ${vSt.visitsWeek} أسبوعياً`,
+    `✨ <b>زوّار مميّز (7 أيام):</b> ${vSt.uniqueVisitorsWeek}`,
     '',
-    `<b>طلبات اليوم:</b> ${oSt.ordersToday} · USDT: ${oSt.volumeToday}`,
-    `<b>طلبات (7 أيام):</b> ${oSt.ordersWeek} · USDT: ${oSt.volumeWeek}`,
-    `<b>إجمالي الطلبات المسجّلة:</b> ${oSt.total}`,
+    `🛒 <b>الطلبات:</b> ${oSt.ordersToday} اليوم · ${oSt.ordersWeek} أسبوعياً`,
+    `💰 <b>حجم التداول (7 أيام):</b> ${oSt.volumeWeek} USDT`,
     '',
-    `<b>أرقام العرض (الواجهة):</b> 👥 ${stats.customers} · ✅ ${stats.transactions}`,
-    webNote,
+    '🔥 <b>الأكثر زيارة:</b>',
+    topPaths,
+    '',
+    '🌐 <b>لوحة الويب:</b> <code>/admin/crm</code>',
   ].join('\n');
-  await botSend(text, { reply_markup: { inline_keyboard: [
-    [{ text: '🔎 آخر 5 زيارات', callback_data: 'crm_v5' }, { text: '🛒 آخر 5 طلبات', callback_data: 'crm_o5' }],
-    [{ text: '📥 CSV زيارات', callback_data: 'crm_csv_v' }, { text: '📥 CSV طلبات', callback_data: 'crm_csv_o' }],
-    [{ text: '📄 تقرير HTML (لـPDF)', callback_data: 'crm_html' }],
-    [{ text: '🔙 القائمة', callback_data: 'menu_main' }],
-  ] } }, forceChatId);
+
+  await botSend(text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔎 آخر 5 زيارات', callback_data: 'crm_v5' }, { text: '🛒 آخر 5 طلبات', callback_data: 'crm_o5' }],
+        [{ text: '📥 CSV زيارات', callback_data: 'crm_csv_v' }, { text: '📥 CSV طلبات', callback_data: 'crm_csv_o' }],
+        [{ text: '📄 تقرير HTML (لـPDF)', callback_data: 'crm_html' }],
+        [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
+      ],
+    },
+  }, forceChatId);
 }
 
 async function answerCbq(id, text = '') {

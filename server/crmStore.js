@@ -28,7 +28,8 @@ export function shouldSkipVisitDedupe(visitorId, pagePath) {
   const key = `${String(visitorId || 'anon').slice(0, 64)}|${String(pagePath || '/').slice(0, 120)}`;
   const now = Date.now();
   const prev = visitDedupe.get(key) || 0;
-  if (now - prev < 45000) return true;
+  // Increase deduplication window to 15 minutes to filter repeated browsing
+  if (now - prev < 900000) return true;
   visitDedupe.set(key, now);
   if (visitDedupe.size > 8000) {
     const cutoff = now - 120000;
@@ -80,7 +81,10 @@ function pruneOrders(list) {
  * @param {import('express').Request | null} req
  */
 export function buildVisitRecord(body, req) {
-  const pathNorm = String(body?.path || '/').slice(0, 200) || '/';
+  // Strip query parameters for cleaner stats and reports
+  let pathNorm = String(body?.path || '/').split('?')[0].split('#')[0];
+  pathNorm = pathNorm.replace(/\/+$/, '') || '/';
+  if (pathNorm.length > 200) pathNorm = pathNorm.slice(0, 200);
   const lang = String(body?.lang || '').slice(0, 12);
   const referrer = String(body?.referrer || '').slice(0, 300);
   const visitorId = String(body?.visitorId || '').slice(0, 80);
@@ -255,7 +259,7 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const vRows = visitSlice.map((v) => `<tr><td>${esc(v.at)}</td><td>${esc(v.path)}</td><td>${esc(v.device)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`).join('');
+  const vRows = visitSlice.map((v) => `<tr><td>${esc(v.at)}</td><td class="path-col">${esc(v.path)}</td><td>${esc(v.device)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`).join('');
   const oRows = orderSlice.map((o) => `<tr><td>${esc(o.at)}</td><td>${esc(o.orderId)}</td><td>${esc(o.name)}</td><td>${esc(o.usdtAmount)}</td><td>${esc(o.paymentMethod)}</td></tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -264,13 +268,19 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
   <meta charset="utf-8"/>
   <title>CRM Report — TETHER IQ</title>
   <style>
-    body { font-family: system-ui, Segoe UI, Tahoma, sans-serif; margin: 24px; color: #111; }
-    h1 { font-size: 1.25rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.8rem; }
-    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: right; }
-    th { background: #f0f9ff; }
-    .meta { color: #555; font-size: 0.9rem; margin-bottom: 20px; }
-    @media print { body { margin: 12px; } }
+    body { font-family: system-ui, Segoe UI, Tahoma, sans-serif; margin: 24px; color: #111; background: #f8fafc; }
+    h1 { font-size: 1.5rem; color: #0f172a; border-bottom: 2px solid #00E5FF; padding-bottom: 8px; }
+    h2 { font-size: 1.1rem; margin-top: 30px; color: #1e293b; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.82rem; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { border: 1px solid #e2e8f0; padding: 10px 12px; text-align: right; }
+    th { background: #f1f5f9; color: #475569; font-weight: 600; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .path-col { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; text-align: left; font-family: monospace; color: #0284c7; }
+    .meta { color: #64748b; font-size: 0.9rem; margin-bottom: 24px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: #fff; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .stat-val { font-size: 1.25rem; font-weight: 700; color: #00E5FF; }
+    @media print { body { margin: 0; background: #fff; } .stat-card { border: 1px solid #eee; } }
   </style>
 </head>
 <body>
