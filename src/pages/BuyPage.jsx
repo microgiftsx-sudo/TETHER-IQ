@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
-import { createOrder, getPaymentDetails, notifyTelegram } from '../api';
+import { createOrder, getPaymentDetails } from '../api';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -146,21 +146,8 @@ export default function BuyPage() {
         paymentProofBase64,
         paymentProofMime,
       });
-      const finalOrderId = response?.orderId || createdOrderId;
-      setOrderId(finalOrderId);
+      setOrderId(response?.orderId || createdOrderId);
       setSent(true);
-      // إرسال إشعار تيليغرام (في الخلفية)
-      notifyTelegram({
-        orderId: finalOrderId,
-        name,
-        wallet: normalizedWallet,
-        walletNetwork: normalizedNetwork,
-        usdtAmount,
-        iqdAmount,
-        paymentMethod,
-        paymentDetail,
-        senderNumber,
-      });
     } catch (e) {
       setError(String(e?.message || e));
     } finally {
