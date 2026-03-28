@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import FormData from 'form-data';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
@@ -226,31 +227,50 @@ app.post('/api/order', async (req, res) => {
       return res.status(502).json({ error: 'Telegram send failed', details: text });
     }
 
-    // Send payment proof image/document if provided
-    if (paymentProofBase64) {
-      try {
-        const buf = Buffer.from(paymentProofBase64, 'base64');
-        const mime = String(paymentProofMime || 'image/jpeg');
-        const isPdf = mime === 'application/pdf';
-        const ext = isPdf ? 'pdf' : (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-        const filename = String(paymentProofName || `proof.${ext}`);
-        const caption = `📎 دليل الدفع — طلب ${safeOrderId}`;
-        const endpoint = isPdf ? 'sendDocument' : 'sendPhoto';
-        const fieldName = isPdf ? 'document' : 'photo';
+    // Send payment proof image/document if provided (multipart — reliable in Node)
+    let proofSent = false;
+    if (paymentProofBase64 && String(paymentProofBase64).length > 0) {
+      const buf = Buffer.from(paymentProofBase64, 'base64');
+      if (buf.length === 0) {
+        return res.status(400).json({ error: 'Invalid payment proof data' });
+      }
+      const mime = String(paymentProofMime || 'image/jpeg').toLowerCase();
+      const extFromName = String(paymentProofName || '').split('.').pop();
+      const ext = mime === 'application/pdf'
+        ? 'pdf'
+        : (extFromName && extFromName.length <= 5 ? extFromName : (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
+      const filename = String(paymentProofName || `proof-${safeOrderId}.${ext}`);
+      const caption = `دليل الدفع — طلب ${safeOrderId}`;
 
-        const form = new FormData();
-        form.append('chat_id', chatId);
-        form.append('caption', caption);
-        form.append(fieldName, new Blob([buf], { type: mime }), filename);
+      const photoMime = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
+      const usePhoto = photoMime.has(mime);
+      const method = usePhoto ? 'sendPhoto' : 'sendDocument';
+      const field = usePhoto ? 'photo' : 'document';
 
-        await fetch(`https://api.telegram.org/bot${botToken}/${endpoint}`, {
-          method: 'POST',
-          body: form,
+      const form = new FormData();
+      form.append('chat_id', String(chatId));
+      form.append('caption', caption);
+      form.append(field, buf, { filename, contentType: mime });
+
+      const proofRes = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+        method: 'POST',
+        body: form,
+        headers: form.getHeaders(),
+      });
+      const proofText = await proofRes.text();
+      if (!proofRes.ok) {
+        // eslint-disable-next-line no-console
+        console.error('Telegram proof send failed:', proofText);
+        return res.status(502).json({
+          error: 'Telegram could not receive payment proof',
+          details: proofText,
+          orderId: safeOrderId,
         });
-      } catch { /* don't fail the order if proof upload fails */ }
+      }
+      proofSent = true;
     }
 
-    res.json({ ok: true, orderId: safeOrderId });
+    res.json({ ok: true, orderId: safeOrderId, proofSent });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }

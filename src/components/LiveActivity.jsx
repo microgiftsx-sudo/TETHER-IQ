@@ -40,7 +40,7 @@ export default function LiveActivity({ t, lang }) {
   const isRtl = lang === 'ar';
 
   return (
-    <div style={{
+    <div className="live-activity-toast" style={{
       position: 'fixed',
       bottom: '20px',
       left: isRtl ? 'auto' : '20px',
@@ -57,12 +57,26 @@ export default function LiveActivity({ t, lang }) {
       alignItems: 'center',
       gap: '1rem',
       boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-      maxWidth: '280px',
+      maxWidth: 'min(280px, calc(100vw - 24px))',
     }}>
       <style>{`
         @keyframes slideUp {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
+        }
+        /* Stay above sticky mobile CTA (Home) */
+        @media (max-width: 900px) {
+          .live-activity-toast {
+            bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+            left: 12px !important;
+            right: 12px !important;
+            max-width: none !important;
+          }
+        }
+        @media (max-width: 430px) {
+          .live-activity-toast {
+            bottom: calc(138px + env(safe-area-inset-bottom, 0px)) !important;
+          }
         }
       `}</style>
       <div style={{

@@ -60,16 +60,13 @@ export default function Testimonials({ t }) {
     <section className="py-8 w-full" dir="rtl">
       <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>{t.testimonialsTitle}</h2>
 
-      {/* Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '1.25rem', maxWidth: '1000px', margin: '0 auto',
-      }}>
+      {/* Cards — responsive grid (1 col phone, 2 tablet, 3 desktop) */}
+      <div className="testimonials-grid">
         {slice.map((r) => (
-          <div key={r.id} className="glass-panel" style={{
+          <div key={r.id} className="glass-panel testimonials-card" style={{
             padding: '1.5rem', borderColor: 'rgba(0,229,255,0.2)',
             display: 'flex', flexDirection: 'column', gap: '0.75rem',
+            minWidth: 0,
           }}>
             <StarRow count={r.stars} />
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.7, margin: 0, flex: 1 }}>
@@ -95,9 +92,37 @@ export default function Testimonials({ t }) {
         ))}
         {/* Invisible placeholders to keep grid columns consistent */}
         {Array.from({ length: PER_PAGE - slice.length }).map((_, i) => (
-          <div key={`placeholder-${i}`} style={{ visibility: 'hidden' }} aria-hidden="true" />
+          <div key={`placeholder-${i}`} className="testimonials-placeholder" style={{ visibility: 'hidden' }} aria-hidden="true" />
         ))}
       </div>
+
+      <style>{`
+        .testimonials-grid {
+          display: grid;
+          gap: 1.25rem;
+          max-width: 1000px;
+          margin: 0 auto;
+          width: 100%;
+        }
+        @media (min-width: 1025px) {
+          .testimonials-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 1024px) and (min-width: 481px) {
+          .testimonials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 480px) {
+          .testimonials-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            max-width: 100%;
+          }
+          .testimonials-card { padding: 1.15rem !important; }
+        }
+        /* Placeholders only for 3-column desktop alignment */
+        @media (max-width: 1024px) {
+          .testimonials-placeholder { display: none !important; }
+        }
+      `}</style>
 
       {/* Pagination - only show if more than one page */}
       {totalPages > 1 && (

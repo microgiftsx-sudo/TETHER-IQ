@@ -71,30 +71,29 @@ export default function Header({ t, lang, toggleLang, rate = 1320, links }) {
           </div>
 
           {/* Mobile right side: lang + hamburger */}
-          <div className="header-mobile-actions" style={{ display: 'none', alignItems: 'center', gap: '0.6rem', marginInlineStart: 'auto' }}>
-            {/* Lang toggle - only show on larger mobile screens if needed, otherwise hide */}
-            <button className="hide-on-very-small" onClick={toggleLang} style={{
-              background: 'transparent', border: '1px solid rgba(0,229,255,0.3)',
+          <div className="header-mobile-actions" style={{ display: 'none', alignItems: 'center', gap: '0.5rem', marginInlineStart: 'auto' }}>
+            <button onClick={toggleLang} style={{
+              background: 'transparent', border: '1px solid rgba(0,229,255,0.35)',
               color: 'var(--accent-primary)', borderRadius: '6px',
-              padding: '0.35rem 0.65rem', fontSize: '0.8rem', fontWeight: 600,
+              padding: '0.35rem 0.7rem', fontSize: '0.82rem', fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
             }}>{lang === 'ar' ? t.langEn : t.langAr}</button>
 
-            <button className="hide-on-small" onClick={() => scrollTo('#checkout-form')} style={{
+            <button onClick={() => scrollTo('#checkout-form')} style={{
               background: 'linear-gradient(135deg,var(--accent-primary),#0077FF)',
-              color: '#030712', fontWeight: 700, fontSize: '0.8rem',
-              padding: '0.4rem 0.8rem', borderRadius: '8px',
+              color: '#030712', fontWeight: 700, fontSize: '0.85rem',
+              padding: '0.4rem 0.9rem', borderRadius: '8px',
               border: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
             }}>{t.buyNow}</button>
 
             <button onClick={() => setMobileOpen(o => !o)} style={{
               background: mobileOpen ? 'rgba(0,229,255,0.1)' : 'none',
-              border: '1px solid rgba(0,229,255,0.25)',
+              border: '1px solid rgba(0,229,255,0.2)',
               borderRadius: '8px', cursor: 'pointer',
-              color: 'var(--text-primary)', padding: '0.45rem',
+              color: 'var(--text-primary)', padding: '0.4rem',
               display: 'flex', alignItems: 'center', transition: 'all 0.2s',
             }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 {mobileOpen
                   ? <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
                   : <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>}
@@ -121,11 +120,6 @@ export default function Header({ t, lang, toggleLang, rate = 1320, links }) {
                 style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '20px', padding: '0.25rem 0.65rem', fontSize: '0.78rem', fontWeight: 700, color: 'rgba(248,250,252,0.8)', textDecoration: 'none' }}>
                 OKX · {Number(rate).toLocaleString()}
               </a>
-              <button onClick={toggleLang} style={{
-                marginInlineStart: 'auto', background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.3)',
-                borderRadius: '12px', padding: '0.25rem 0.75rem', fontSize: '0.8rem', fontWeight: 800, color: 'var(--accent-primary)',
-                cursor: 'pointer', fontFamily: 'inherit'
-              }}>{lang === 'ar' ? 'English' : 'العربية'}</button>
             </div>
             {/* Nav links */}
             {navLinks.map(link => (
@@ -148,13 +142,6 @@ export default function Header({ t, lang, toggleLang, rate = 1320, links }) {
         @media (max-width: 900px) {
           .header-desktop-nav { display: none !important; }
           .header-mobile-actions { display: flex !important; }
-          .logo-img { height: 44px !important; }
-        }
-        @media (max-width: 600px) {
-          .hide-on-small { display: none !important; }
-        }
-        @media (max-width: 440px) {
-          .hide-on-very-small { display: none !important; }
         }
       `}</style>
     </header>
@@ -179,8 +166,7 @@ function Logo({ navigate }) {
       <img
         src="/logo.png"
         alt="TETHER IQ"
-        className="logo-img"
-        style={{ height: '52px', width: 'auto', display: 'block', flexShrink: 0, transition: 'height 0.2s' }}
+        style={{ height: '52px', width: 'auto', display: 'block', flexShrink: 0 }}
       />
     </button>
   );
