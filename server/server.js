@@ -611,7 +611,7 @@ async function sendCrmDocument(chatId, filename, buffer, caption = '') {
     form.append('chat_id', String(chatId));
     if (caption) form.append('caption', caption.slice(0, 1000));
     const mime = filename.endsWith('.csv') ? 'text/csv' : 'text/html';
-    form.append('document', buffer, { filename, contentType: `${mime}; charset=utf-8` });
+    form.append('document', buffer, { filename, contentType: mime });
     const { data } = await tgPostMultipart(botToken, 'sendDocument', form);
     if (!data?.ok) {
       // eslint-disable-next-line no-console
@@ -630,9 +630,7 @@ async function showCrmHome(forceChatId = null) {
   const vSt = computeVisitStats(visits);
   const oSt = computeOrderStats(orders);
   const topPaths = vSt.topPaths.map((p) => `${p.path}: ${p.count}`).join(', ') || '—';
-  const webNote = adminCrmToken()
-    ? '\n\n🌐 <b>لوحة الويب:</b> مسار <code>/admin/crm</code> — الرمز من <code>ADMIN_CRM_TOKEN</code>'
-    : '\n\n⚠️ للوحة الويب: أضف <code>ADMIN_CRM_TOKEN</code> في <code>.env</code>';
+  const webNote = '\n\n🌐 <b>لوحة الويب:</b> مسار <code>/admin/crm</code>';
   const text = [
     '📈 <b>CRM — لوحة المتابعة</b>',
     '━━━━━━━━━━━━━━━',

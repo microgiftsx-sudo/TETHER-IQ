@@ -13,6 +13,8 @@ function parseTelegramResponse(text) {
   try {
     return JSON.parse(text);
   } catch {
+    // eslint-disable-next-line no-console
+    console.error('Telegram non-JSON response:', text?.slice(0, 1000));
     return { ok: false, description: text?.slice(0, 500) || 'invalid json' };
   }
 }

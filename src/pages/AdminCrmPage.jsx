@@ -137,9 +137,7 @@ export default function AdminCrmPage() {
         </div>
 
         <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.25rem', border: '1px solid rgba(0,229,255,0.25)' }}>
-          <p style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', color: '#94a3b8' }}>
-            أدخل <code style={{ color: '#fff' }}>ADMIN_CRM_TOKEN</code> من ملف الخادم <code>.env</code> — لا تشاركه علناً.
-          </p>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', color: '#00E5FF' }}>الدخول للوحة التحكم</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="password"
