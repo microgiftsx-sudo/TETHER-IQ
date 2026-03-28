@@ -49,7 +49,7 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col" style={{ minHeight: '100vh', justifyContent: 'space-between' }}>
-      <Header t={t} lang={lang} toggleLang={toggleLang} rate={rate} links={siteConfig?.links} />
+      <Header t={t} lang={lang} toggleLang={toggleLang} links={siteConfig?.links} />
 
       <main className="container flex-col gap-6 py-8" style={{ flex: 1, display: 'flex' }}>
         <Hero t={t} lang={lang} usdtAmount={usdtAmount} setUsdtAmount={setUsdtAmount} hero={siteConfig?.hero} />
