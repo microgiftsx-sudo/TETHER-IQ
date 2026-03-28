@@ -14,6 +14,41 @@ import {
   tgAnswerCallbackQuery,
   escapeTelegramHtml,
 } from './telegramClient.js';
+import {
+  METHOD_KEYS,
+  migratePaymentDetails,
+  getActiveProfile,
+  getProfileById,
+  buildPublicPaymentPayload,
+  profileIndex,
+  newProfileId,
+  normalizeProfile,
+  defaultEmptyMethods,
+  defaultMethodEnabled,
+} from './paymentProfiles.js';
+
+const PAYMENT_METHOD_LABEL_TO_KEY = {
+  'Zain Cash': 'zainCash',
+  FIB: 'fib',
+  MasterCard: 'mastercard',
+  'Asia Hawala': 'asiaHawala',
+};
+
+const adminProfileContext = new Map(); // chatId -> { profileId }
+
+function resolveEditingProfileId(details, chatId) {
+  const pid = adminProfileContext.get(String(chatId))?.profileId;
+  if (pid && getProfileById(details, pid)) return pid;
+  return details.currentProfileId;
+}
+
+function setEditingProfile(chatId, profileId) {
+  adminProfileContext.set(String(chatId), { profileId });
+}
+
+function getEditingProfile(details, chatId) {
+  return getProfileById(details, resolveEditingProfileId(details, chatId));
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,8 +94,23 @@ async function initDataFiles() {
 }
 
 async function loadPaymentDetails() {
-  const raw = await readFile(DATA_PATH, 'utf8');
-  return JSON.parse(raw);
+  let rawText;
+  try {
+    rawText = await readFile(DATA_PATH, 'utf8');
+  } catch {
+    rawText = '{}';
+  }
+  let raw;
+  try {
+    raw = JSON.parse(rawText);
+  } catch {
+    raw = {};
+  }
+  const { details, migrated } = migratePaymentDetails(raw);
+  if (migrated) {
+    await savePaymentDetails(details);
+  }
+  return details;
 }
 
 async function savePaymentDetails(details) {
@@ -157,7 +207,7 @@ app.get('/api/payment-details', async (_req, res) => {
   try {
     const details = await loadPaymentDetails();
     const rate = await computeRate(details);
-    res.json({ ...details, rate });
+    res.json(buildPublicPaymentPayload(details, rate));
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -208,11 +258,24 @@ app.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Invalid sender phone number format' });
     }
 
+    const detailsFull = await loadPaymentDetails();
+    const rateNum = await computeRate(detailsFull);
+    const publicPm = buildPublicPaymentPayload(detailsFull, rateNum);
+    const pmKey = PAYMENT_METHOD_LABEL_TO_KEY[paymentMethod];
+    if (!pmKey || !publicPm.methods?.[pmKey]) {
+      return res.status(400).json({ error: 'Payment method not available for the active profile' });
+    }
+
     const safeOrderId = String(orderId || `ORD-${Date.now().toString(36).toUpperCase()}`);
+    const activeProf = getActiveProfile(detailsFull);
+    const profileLine = activeProf
+      ? `<b>👤 بروفايل المنصة:</b> ${escapeTelegramHtml(activeProf.nameAr)} (${escapeTelegramHtml(activeProf.nameEn)})`
+      : null;
 
     const lines = [
       '🚀 <b>طلب جديد (New Order)</b> 🚀',
       '━━━━━━━━━━━━━━━',
+      profileLine,
       `<b>🧾 رقم الطلب:</b> ${escapeTelegramHtml(safeOrderId)}`,
       `<b>👤 الاسم:</b> ${escapeTelegramHtml(name)}`,
       `<b>💰 المبلغ:</b> ${escapeTelegramHtml(String(amountNum))} USDT`,
@@ -388,10 +451,11 @@ function mainMenuKeyboard() {
         { text: '💱 سعر الصرف', callback_data: 'menu_rate' },
       ],
       [
+        { text: '👤 البروفايلات', callback_data: 'menu_profiles' },
         { text: '✏️ تعديل البيانات', callback_data: 'menu_edit' },
-        { text: '⏱️ وقت الانتهاء', callback_data: 'menu_timer' },
       ],
       [
+        { text: '⏱️ وقت الانتهاء', callback_data: 'menu_timer' },
         { text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' },
       ],
       [
@@ -436,7 +500,7 @@ async function showRateMenu(forceChatId = null) {
 
 async function showQrMenu(forceChatId = null) {
   await botSend(
-    '📷 <b>إضافة باركود QR</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
+    '📷 <b>إضافة باركود QR</b>\nيتم الحفظ للبروفايل الذي تعدّله حالياً.\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
     { reply_markup: { inline_keyboard: [
       [{ text: '💚 زين كاش', callback_data: 'qr_zain' }, { text: '🏦 المصرف الأول', callback_data: 'qr_fib' }],
       [{ text: '💳 ماستر كارد', callback_data: 'qr_mc' }, { text: '🌐 آسيا حوالة', callback_data: 'qr_asia' }],
@@ -446,13 +510,68 @@ async function showQrMenu(forceChatId = null) {
   );
 }
 
-async function showEditMenu(forceChatId = null) {
+async function showEditProfilePicker(forceChatId = null) {
+  const details = await loadPaymentDetails();
+  const rows = details.profiles.map((p, i) => [
+    { text: `✏️ ${p.nameAr || p.nameEn || p.id}`, callback_data: `prof_edit_go_${i}` },
+  ]);
+  rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
   await botSend(
-    '✏️ <b>تعديل البيانات</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
+    '✏️ <b>اختر البروفايل لتعديل بيانات الدفع</b>\n(كل مدير له حساباته الخاصة)',
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
+  );
+}
+
+async function showProfilesMenu(forceChatId = null) {
+  const details = await loadPaymentDetails();
+  const active = details.currentProfileId;
+  const rows = details.profiles.map((p, i) => {
+    const mark = p.id === active ? ' 🌐' : '';
+    return [{ text: `${p.nameAr || p.nameEn}${mark}`, callback_data: `prof_sum_${i}` }];
+  });
+  rows.push([{ text: '➕ بروفايل جديد', callback_data: 'prof_add' }]);
+  rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
+  await botSend(
+    '👤 <b>البروفايلات</b>\n🌐 = البروفايل <b>النشط على الموقع</b> (يظهر للعملاء).\nاضغط لعرض الخيارات.',
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
+  );
+}
+
+async function showMethodToggleMenu(profileIndex, forceChatId = null) {
+  const details = await loadPaymentDetails();
+  const p = details.profiles[profileIndex];
+  if (!p) return;
+  const labels = {
+    zainCash: '💚 زين كاش',
+    asiaHawala: '🌐 آسيا حوالة',
+    fib: '🏦 FIB',
+    mastercard: '💳 ماستر كارد',
+  };
+  const rows = METHOD_KEYS.map((key) => {
+    const on = p.methodEnabled[key] !== false;
+    return [{ text: `${on ? '✅' : '⛔'} ${labels[key]}`, callback_data: `prof_mten_${profileIndex}_${key}` }];
+  });
+  rows.push([{ text: '🔙 رجوع', callback_data: `prof_sum_${profileIndex}` }]);
+  await botSend(
+    `⚙️ <b>ظهور طرق الدفع على الموقع</b>\nالبروفايل: <b>${p.nameAr}</b>\n✅ ظاهرة للعملاء — ⛔ مخفية\n(تُطبَّق عندما يكون هذا البروفايل هو 🌐 النشط على المنصة)`,
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
+  );
+}
+
+async function showEditMenu(forceChatId = null) {
+  const details = await loadPaymentDetails();
+  const pid = resolveEditingProfileId(details, forceChatId);
+  const p = getProfileById(details, pid);
+  await botSend(
+    `✏️ <b>تعديل البيانات</b>\nالبروفايل: <b>${p.nameAr}</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '💚 زين كاش', callback_data: 'edit_zain' }, { text: '🌐 آسيا حوالة', callback_data: 'edit_asia' }],
       [{ text: '🏦 المصرف الأول', callback_data: 'edit_fib' }, { text: '💳 ماستر كارد', callback_data: 'edit_mc' }],
-      [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
+      [{ text: '🔙 اختيار بروفايل آخر', callback_data: 'menu_edit' }],
+      [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
     ] } },
     forceChatId
   );
@@ -516,7 +635,7 @@ async function showHeroMenu(forceChatId = null) {
   );
 }
 
-async function showLinksMenu() {
+async function showLinksMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const l = cfg.links || {};
   await botSend(
@@ -525,7 +644,8 @@ async function showLinksMenu() {
       [{ text: '🔗 رابط BNB', callback_data: 'sf_link_bnb' }, { text: '🔗 رابط OKX', callback_data: 'sf_link_okx' }],
       [{ text: '📬 رابط التواصل', callback_data: 'sf_link_contact' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
-    ] } }
+    ] } },
+    forceChatId
   );
 }
 
@@ -578,13 +698,99 @@ async function handleCallbackQuery(data, incomingChatId) {
   if (data === 'menu_main')  { pendingState = null; await sendMainMenu(incomingChatId); return; }
   if (data === 'cancel_input') { pendingState = null; await sendMainMenu(incomingChatId); return; }
 
+  if (data === 'menu_profiles') {
+    await showProfilesMenu(incomingChatId);
+    return;
+  }
+
+  if (data === 'prof_add') {
+    pendingState = { action: 'addProfile', step: 0 };
+    await botSend('👤 أرسل <b>اسم البروفايل بالعربية</b> (مثال: علي عدنان):', { reply_markup: cancelButton() }, incomingChatId);
+    return;
+  }
+
+  if (/^prof_sum_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_sum_'.length));
+    const details = await loadPaymentDetails();
+    const p = details.profiles[i];
+    if (!p) return;
+    const active = details.currentProfileId === p.id;
+    await botSend(
+      [
+        `👤 <b>${p.nameAr}</b>`,
+        `<i>${p.nameEn || ''}</i>`,
+        '',
+        active ? '✅ <b>نشط على الموقع</b> 🌐 (العملاء يرون حسابات هذا البروفايل)' : 'ℹ️ غير نشط على الموقع — استخدم «جعله النشط» للتبديل.',
+      ].join('\n'),
+      { reply_markup: { inline_keyboard: [
+        [{ text: '✏️ تعديل بيانات هذا البروفايل', callback_data: `prof_edit_go_${i}` }],
+        [{ text: '⚙️ تفعيل/إيقاف طرق على الموقع', callback_data: `prof_methods_${i}` }],
+        [{ text: '🌐 جعله البروفايل النشط للموقع', callback_data: `prof_platform_${i}` }],
+        [{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }],
+      ] } },
+      incomingChatId
+    );
+    return;
+  }
+
+  if (/^prof_edit_go_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_edit_go_'.length));
+    const details = await loadPaymentDetails();
+    const p = details.profiles[i];
+    if (!p) return;
+    setEditingProfile(incomingChatId, p.id);
+    await showEditMenu(incomingChatId);
+    return;
+  }
+
+  if (/^prof_platform_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_platform_'.length));
+    const details = await loadPaymentDetails();
+    const p = details.profiles[i];
+    if (!p) return;
+    await savePaymentDetails({ ...details, currentProfileId: p.id });
+    await botSend(
+      `✅ البروفايل النشط على <b>الموقع</b> أصبح:\n<b>${p.nameAr}</b>\nعند الشراء، تظهر للعميل حسابات هذا البروفايل فقط (مع احترام طرق الدفع المفعّلة).`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]] } },
+      incomingChatId
+    );
+    return;
+  }
+
+  if (/^prof_methods_\d+$/.test(data)) {
+    const i = Number(data.slice('prof_methods_'.length));
+    await showMethodToggleMenu(i, incomingChatId);
+    return;
+  }
+
+  if (/^prof_mten_\d+_(zainCash|asiaHawala|fib|mastercard)$/.test(data)) {
+    const m = data.match(/^prof_mten_(\d+)_(zainCash|asiaHawala|fib|mastercard)$/);
+    const i = Number(m[1]);
+    const methodKey = m[2];
+    const details = await loadPaymentDetails();
+    const prof = details.profiles[i];
+    if (!prof) return;
+    const curOn = prof.methodEnabled[methodKey] !== false;
+    const profiles = [...details.profiles];
+    profiles[i] = {
+      ...prof,
+      methodEnabled: { ...prof.methodEnabled, [methodKey]: !curOn },
+    };
+    await savePaymentDetails({ ...details, profiles });
+    await showMethodToggleMenu(i, incomingChatId);
+    return;
+  }
+
   if (data === 'menu_pay') {
     const details = await loadPaymentDetails();
     const rate = await computeRate(details);
-    const m = details.methods || {};
+    const active = getActiveProfile(details);
+    const m = active?.methods || {};
     await botSend(
       [
-        '📋 <b>بيانات الدفع الحالية</b>', '━━━━━━━━━━━━━━━',
+        '📋 <b>بيانات الدفع (النشط على الموقع)</b>',
+        `👤 <b>البروفايل:</b> ${active?.nameAr || '-'} (${active?.nameEn || ''})`,
+        '━━━━━━━━━━━━━━━',
         `💱 السعر: <b>${rate} IQD/USDT</b>`,
         `⏱️ وقت الانتهاء: <b>${details.paymentExpiryMinutes} دقيقة</b>`,
         '', '🔷 <b>زين كاش:</b> ' + (m.zainCash?.number || '-'),
@@ -592,25 +798,26 @@ async function handleCallbackQuery(data, incomingChatId) {
         '🔷 <b>المصرف الأول:</b> ' + (m.fib?.accountNumber || '-'),
         '🔷 <b>ماستر كارد:</b> ' + (m.mastercard?.cardNumber || '-'),
       ].join('\n'),
-      { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } }
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } },
+      incomingChatId
     );
     return;
   }
 
   if (data === 'menu_rate')  { await showRateMenu(incomingChatId);  return; }
   if (data === 'menu_qr')    { await showQrMenu(incomingChatId);    return; }
-  if (data === 'menu_edit')  { await showEditMenu(incomingChatId);  return; }
+  if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
     pendingState = { action: 'rateFixed' };
-    await botSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() });
+    await botSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
   if (data === 'rate_float') {
     pendingState = { action: 'rateFloat' };
-    await botSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() });
+    await botSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
 
@@ -618,72 +825,88 @@ async function handleCallbackQuery(data, incomingChatId) {
   const qrMap = { qr_zain: ['zain','زين كاش','edit_zain'], qr_fib: ['fib','المصرف الأول','edit_fib'], qr_mc: ['mastercard','ماستر كارد','edit_mc'], qr_asia: ['asia','آسيا حوالة','edit_asia'] };
   if (qrMap[data]) {
     const [method, label, backTo] = qrMap[data];
-    pendingState = { action: 'awaitPhoto', method, label, backTo };
-    await botSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() });
+    const details = await loadPaymentDetails();
+    const pid = resolveEditingProfileId(details, incomingChatId);
+    pendingState = { action: 'awaitPhoto', method, label, backTo, profileId: pid };
+    await botSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
 
   // ── Edit method selection ────────────────────────────
   if (data === 'edit_zain') {
-    const d = await loadPaymentDetails();
+    const details = await loadPaymentDetails();
+    const d = getEditingProfile(details, incomingChatId);
+    if (!d?.methods) return;
     await botSend(
       `✏️ <b>زين كاش</b>\nالرقم: <code>${d.methods?.zainCash?.number || '-'}</code>\nالباركود: ${d.methods?.zainCash?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '📱 تغيير الرقم', callback_data: 'ef_zain_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_zain' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } }
+      ] } },
+      incomingChatId
     );
     return;
   }
   if (data === 'edit_asia') {
-    const d = await loadPaymentDetails();
+    const details = await loadPaymentDetails();
+    const d = getEditingProfile(details, incomingChatId);
+    if (!d?.methods) return;
     await botSend(
       `✏️ <b>آسيا حوالة</b>\nالرقم: <code>${d.methods?.asiaHawala?.number || '-'}</code>\nالباركود: ${d.methods?.asiaHawala?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '📱 تغيير الرقم', callback_data: 'ef_asia_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_asia' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } }
+      ] } },
+      incomingChatId
     );
     return;
   }
   if (data === 'edit_fib') {
-    const d = await loadPaymentDetails();
+    const details = await loadPaymentDetails();
+    const d = getEditingProfile(details, incomingChatId);
+    if (!d?.methods) return;
     await botSend(
       `✏️ <b>المصرف الأول (FIB)</b>\nرقم الحساب: <code>${d.methods?.fib?.accountNumber || '-'}</code>\nاسم الحساب: <code>${d.methods?.fib?.accountName || '-'}</code>\nالباركود: ${d.methods?.fib?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '🔢 رقم الحساب', callback_data: 'ef_fib_num' }, { text: '✍️ اسم الحساب', callback_data: 'ef_fib_name' }],
         [{ text: '📷 تحديث الباركود', callback_data: 'qr_fib' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } }
+      ] } },
+      incomingChatId
     );
     return;
   }
   if (data === 'edit_mc') {
-    const d = await loadPaymentDetails();
+    const details = await loadPaymentDetails();
+    const d = getEditingProfile(details, incomingChatId);
+    if (!d?.methods) return;
     await botSend(
       `✏️ <b>ماستر كارد</b>\nرقم البطاقة: <code>${d.methods?.mastercard?.cardNumber || '-'}</code>\nاسم الحامل: <code>${d.methods?.mastercard?.cardHolder || '-'}</code>\nالباركود: ${d.methods?.mastercard?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '💳 رقم البطاقة', callback_data: 'ef_mc_num' }, { text: '✍️ اسم الحامل', callback_data: 'ef_mc_holder' }],
         [{ text: '📷 تحديث الباركود', callback_data: 'qr_mc' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } }
+      ] } },
+      incomingChatId
     );
     return;
   }
 
   // ── Edit fields (await text input) ──────────────────
   const fieldMap = {
-    ef_zain_num:   ['methods.zainCash.number',       'رقم زين كاش',        'menu_edit'],
-    ef_asia_num:   ['methods.asiaHawala.number',     'رقم آسيا حوالة',      'menu_edit'],
-    ef_fib_num:    ['methods.fib.accountNumber',     'رقم حساب FIB',        'edit_fib'],
-    ef_fib_name:   ['methods.fib.accountName',       'اسم حساب FIB',        'edit_fib'],
-    ef_mc_num:     ['methods.mastercard.cardNumber', 'رقم بطاقة ماستر كارد','edit_mc'],
-    ef_mc_holder:  ['methods.mastercard.cardHolder', 'اسم حامل البطاقة',    'edit_mc'],
+    ef_zain_num:   ['zainCash.number',       'رقم زين كاش',        'menu_edit'],
+    ef_asia_num:   ['asiaHawala.number',     'رقم آسيا حوالة',      'menu_edit'],
+    ef_fib_num:    ['fib.accountNumber',     'رقم حساب FIB',        'edit_fib'],
+    ef_fib_name:   ['fib.accountName',       'اسم حساب FIB',        'edit_fib'],
+    ef_mc_num:     ['mastercard.cardNumber', 'رقم بطاقة ماستر كارد','edit_mc'],
+    ef_mc_holder:  ['mastercard.cardHolder', 'اسم حامل البطاقة',    'edit_mc'],
   };
   if (fieldMap[data]) {
+    const details = await loadPaymentDetails();
+    const profileId = resolveEditingProfileId(details, incomingChatId);
     const [path, label, backTo] = fieldMap[data];
-    pendingState = { action: 'editField', path, label, backTo };
-    await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
+    pendingState = { action: 'editField', path, label, backTo, profileId };
+    await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
 
@@ -693,12 +916,12 @@ async function handleCallbackQuery(data, incomingChatId) {
     const mins = timerPresets[data];
     const details = await loadPaymentDetails();
     await savePaymentDetails({ ...details, paymentExpiryMinutes: mins });
-    await botSend(`✅ تم تعيين وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } });
+    await botSend(`✅ تم تعيين وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } }, incomingChatId);
     return;
   }
   if (data === 'timer_custom') {
     pendingState = { action: 'setTimer' };
-    await botSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() });
+    await botSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
 
@@ -891,7 +1114,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const parts = raw.split(/\s+/);
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
-        await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() });
+        await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
         return;
       }
@@ -902,29 +1125,64 @@ async function handleAdminCommand(text, incomingChatId) {
       details.rateConfig.floatOffset = Number.isFinite(offset) ? offset : 0;
       await savePaymentDetails(details);
       const effective = await computeRate(details);
-      await botSend(`✅ وضع عائم: Base=${base}, Offset=${offset}\nالسعر الحالي: <b>${effective} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } });
+      await botSend(`✅ وضع عائم: Base=${base}, Offset=${offset}\nالسعر الحالي: <b>${effective} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } }, incomingChatId);
       return;
     }
 
     if (st.action === 'setTimer') {
       const mins = Number(raw);
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
-        await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() });
+        await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
         return;
       }
       const details = await loadPaymentDetails();
       await savePaymentDetails({ ...details, paymentExpiryMinutes: mins });
-      await botSend(`✅ وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } });
+      await botSend(`✅ وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } }, incomingChatId);
       return;
     }
 
     if (st.action === 'editField') {
       const details = await loadPaymentDetails();
-      setByPath(details, st.path, raw);
-      await savePaymentDetails(details);
-      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } });
+      const pid = st.profileId || resolveEditingProfileId(details, incomingChatId);
+      const idx = profileIndex(details, pid);
+      if (idx < 0) {
+        await botSend('❌ بروفايل غير موجود.', {}, incomingChatId);
+        return;
+      }
+      const profiles = [...details.profiles];
+      const prof = { ...profiles[idx], methods: JSON.parse(JSON.stringify(profiles[idx].methods)) };
+      setByPath(prof.methods, st.path, raw);
+      profiles[idx] = prof;
+      await savePaymentDetails({ ...details, profiles });
+      pendingState = null;
+      await botSend(`✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${raw}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } }, incomingChatId);
       return;
+    }
+
+    if (st.action === 'addProfile') {
+      const d = st.data || {};
+      if (st.step === 0) {
+        pendingState = { action: 'addProfile', step: 1, data: { nameAr: raw } };
+        await botSend('أرسل <b>الاسم بالإنجليزية</b> (اختياري — يمكن إرسال نفس العربي):', { reply_markup: cancelButton() }, incomingChatId);
+        return;
+      }
+      if (st.step === 1) {
+        const details = await loadPaymentDetails();
+        const id = newProfileId();
+        const nameEn = raw.trim() || d.nameAr;
+        const newP = normalizeProfile({
+          id,
+          nameAr: d.nameAr,
+          nameEn,
+          methodEnabled: defaultMethodEnabled(),
+          methods: defaultEmptyMethods(),
+        });
+        await savePaymentDetails({ ...details, profiles: [...details.profiles, newP] });
+        pendingState = null;
+        await botSend(`✅ تم إنشاء البروفايل:\n<b>${newP.nameAr}</b>\nاضغط «البروفايلات» لجعله نشطاً على الموقع أو تعديل حساباته.`, { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } }, incomingChatId);
+        return;
+      }
     }
 
     if (st.action === 'editSiteField') {
@@ -1007,7 +1265,19 @@ async function handleAdminCommand(text, incomingChatId) {
 
   if (trimmed === '/pay' || trimmed === '/pay@' + (process.env.BOT_USERNAME || '').toLowerCase()) {
     const details = await loadPaymentDetails();
-    await botSend(JSON.stringify(details, null, 2), {}, incomingChatId);
+    const rate = await computeRate(details);
+    const pub = buildPublicPaymentPayload(details, rate);
+    const overview = {
+      publicSitePayload: pub,
+      profiles: details.profiles.map((p) => ({
+        id: p.id,
+        nameAr: p.nameAr,
+        nameEn: p.nameEn,
+        activeOnSite: p.id === details.currentProfileId,
+        methodEnabled: p.methodEnabled,
+      })),
+    };
+    await botSend(`<pre>${escapeTelegramHtml(JSON.stringify(overview, null, 2))}</pre>`, {}, incomingChatId);
     return;
   }
 
@@ -1071,15 +1341,31 @@ async function handleAdminCommand(text, incomingChatId) {
     const rest = trimmed.slice(5).trim();
     const firstSpace = rest.indexOf(' ');
     if (firstSpace === -1) {
-      await botSend('Usage: /set <path> <value>');
+      await botSend('Usage: /set methods.zainCash.number 077... (يُطبَّق على البروفايل النشط للموقع)', {}, incomingChatId);
       return;
     }
     const p = rest.slice(0, firstSpace).trim();
     const value = rest.slice(firstSpace + 1).trim();
     const details = await loadPaymentDetails();
+    if (p.startsWith('methods.')) {
+      const pid = details.currentProfileId;
+      const idx = profileIndex(details, pid);
+      if (idx < 0) {
+        await botSend('❌ لا يوجد بروفايل نشط.', {}, incomingChatId);
+        return;
+      }
+      const inner = p.slice('methods.'.length);
+      const profiles = [...details.profiles];
+      const prof = { ...profiles[idx], methods: JSON.parse(JSON.stringify(profiles[idx].methods)) };
+      setByPath(prof.methods, inner, value);
+      profiles[idx] = prof;
+      await savePaymentDetails({ ...details, profiles });
+      await botSend(`✅ Updated ${p} على البروفايل النشط`, {}, incomingChatId);
+      return;
+    }
     setByPath(details, p, value);
     await savePaymentDetails(details);
-    await botSend(`✅ Updated ${p}`);
+    await botSend(`✅ Updated ${p}`, {}, incomingChatId);
     return;
   }
 
@@ -1087,30 +1373,37 @@ async function handleAdminCommand(text, incomingChatId) {
 }
 
 const QR_METHOD_MAP = {
-  zain: 'methods.zainCash.qrImage',
-  zaincash: 'methods.zainCash.qrImage',
-  fib: 'methods.fib.qrImage',
-  mastercard: 'methods.mastercard.qrImage',
-  master: 'methods.mastercard.qrImage',
-  asia: 'methods.asiaHawala.qrImage',
-  asiahawala: 'methods.asiaHawala.qrImage',
+  zain: 'zainCash.qrImage',
+  zaincash: 'zainCash.qrImage',
+  fib: 'fib.qrImage',
+  mastercard: 'mastercard.qrImage',
+  master: 'mastercard.qrImage',
+  asia: 'asiaHawala.qrImage',
+  asiahawala: 'asiaHawala.qrImage',
 };
 
-async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit') {
+async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profileId = null) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = msg.chat?.id;
   const fieldPath = QR_METHOD_MAP[methodKey];
-  if (!fieldPath) { await botSend(`❌ طريقة دفع غير معروفة: ${methodKey}`); return; }
+  if (!fieldPath) { await botSend(`❌ طريقة دفع غير معروفة: ${methodKey}`, {}, chatId); return; }
   const fileId = msg.photo[msg.photo.length - 1].file_id;
   try {
     const { data: fileData } = await tgGetFile(botToken, fileId);
     if (!fileData?.ok || !fileData?.result?.file_path) throw new Error('getFile failed');
     const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
     const details = await loadPaymentDetails();
-    setByPath(details, fieldPath, fileUrl);
-    await savePaymentDetails(details);
-    await botSend(`✅ تم حفظ باركود <b>${label || methodKey}</b> بنجاح!`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } });
+    const pid = profileId || details.currentProfileId;
+    const idx = profileIndex(details, pid);
+    if (idx < 0) throw new Error('profile not found');
+    const profiles = [...details.profiles];
+    const prof = { ...profiles[idx], methods: JSON.parse(JSON.stringify(profiles[idx].methods)) };
+    setByPath(prof.methods, fieldPath, fileUrl);
+    profiles[idx] = prof;
+    await savePaymentDetails({ ...details, profiles });
+    await botSend(`✅ تم حفظ باركود <b>${label || methodKey}</b> لبروفايل <b>${prof.nameAr}</b>!`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } }, chatId);
   } catch (e) {
-    await botSend(`❌ فشل حفظ الصورة: ${e?.message || e}`);
+    await botSend(`❌ فشل حفظ الصورة: ${e?.message || e}`, {}, chatId);
   }
 }
 
@@ -1120,20 +1413,22 @@ async function handlePhotoMessage(msg) {
 
   // ── Check if we're awaiting a photo from button flow ──
   if (pendingState?.action === 'awaitPhoto') {
-    const { method, label, backTo } = pendingState;
+    const { method, label, backTo, profileId } = pendingState;
     pendingState = null;
-    await savePhotoAsQr(msg, method, label, backTo || 'menu_edit');
+    await savePhotoAsQr(msg, method, label, backTo || 'menu_edit', profileId);
     return;
   }
 
   // ── Fallback: caption-based ──────────────────────────
   const caption = String(msg.caption || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!caption.startsWith('qr ') && !Object.keys(QR_METHOD_MAP).includes(caption)) {
-    await botSend('📷 لإضافة باركود اضغط الزر في القائمة أو أرسل صورة مع caption:\n<code>qr zain</code> / <code>qr fib</code> / <code>qr mastercard</code> / <code>qr asia</code>');
+    await botSend('📷 لإضافة باركود اضغط الزر في القائمة أو أرسل صورة مع caption:\n<code>qr zain</code> / <code>qr fib</code> / <code>qr mastercard</code> / <code>qr asia</code>', {}, msg.chat?.id);
     return;
   }
   const key = caption.startsWith('qr ') ? caption.slice(3).trim().replace(/\s+/g, '') : caption;
-  await savePhotoAsQr(msg, key, key);
+  const details = await loadPaymentDetails();
+  const pid = resolveEditingProfileId(details, msg.chat?.id);
+  await savePhotoAsQr(msg, key, key, 'menu_edit', pid);
 }
 
 async function pollTelegram() {

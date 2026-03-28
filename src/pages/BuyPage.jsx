@@ -74,17 +74,28 @@ export default function BuyPage() {
 
   const cd = useCountdown(expiresAtMs);
 
-  const methods = useMemo(
+  const methodOrder = useMemo(
     () => [
-      { id: 'zain', label: 'Zain Cash', labelAr: 'زين كاش' },
-      { id: 'fib', label: 'FIB', labelAr: 'المصرف الأول' },
-      { id: 'mastercard', label: 'MasterCard', labelAr: 'ماستر كارد' },
-      { id: 'asia', label: 'Asia Hawala', labelAr: 'آسيا حوالة' },
+      { key: 'zainCash', label: 'Zain Cash', labelAr: 'زين كاش' },
+      { key: 'fib', label: 'FIB', labelAr: 'المصرف الأول' },
+      { key: 'mastercard', label: 'MasterCard', labelAr: 'ماستر كارد' },
+      { key: 'asiaHawala', label: 'Asia Hawala', labelAr: 'آسيا حوالة' },
     ],
     []
   );
 
   const pm = details?.methods || {};
+
+  const paymentMethodOptions = useMemo(() => {
+    if (!details?.methods || typeof details.methods !== 'object') return [];
+    return methodOrder.filter((o) => Object.prototype.hasOwnProperty.call(details.methods, o.key));
+  }, [details?.methods, methodOrder]);
+
+  useEffect(() => {
+    if (!paymentMethodOptions.length) return;
+    const ok = paymentMethodOptions.some((o) => o.label === paymentMethod);
+    if (!ok) setPaymentMethod(paymentMethodOptions[0].label);
+  }, [paymentMethod, paymentMethodOptions]);
 
   useEffect(() => { setZainQrFailed(false); }, [pm?.zainCash?.qrImage]);
   useEffect(() => { setFibQrFailed(false); }, [pm?.fib?.qrImage]);
@@ -189,9 +200,15 @@ export default function BuyPage() {
       <main className="buy-page-main">
       <section className="container py-10" style={{ maxWidth: 900 }}>
       <div className="glass-panel buy-panel" style={{ padding: '1.75rem', border: '1px solid var(--accent-primary)' }}>
-        <div className="buy-header mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+            <div className="buy-header mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <div className="buy-title-wrap">
             <h2 className="text-accent mb-1">{isRtl ? 'تفاصيل الدفع' : 'Payment Details'}</h2>
+            {details?.activeProfile?.nameAr && (
+              <div className="text-muted text-sm mb-1" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                {isRtl ? 'حساب الاستلام:' : 'Receiving account:'}{' '}
+                <span className="text-accent">{isRtl ? details.activeProfile.nameAr : (details.activeProfile.nameEn || details.activeProfile.nameAr)}</span>
+              </div>
+            )}
             <div className="text-muted text-sm buy-amount-line">
               <span dir="ltr" style={{ unicodeBidi: 'plaintext' }}>
                 {usdtAmount} USDT ≈ {iqdAmount} IQD
@@ -223,14 +240,22 @@ export default function BuyPage() {
                   className="input-control"
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
+                  disabled={!paymentMethodOptions.length}
                   style={{ textAlign: isRtl ? 'right' : 'left', appearance: 'none', cursor: 'pointer' }}
                 >
-                  {methods.map((m) => (
-                    <option key={m.id} value={m.label}>
+                  {paymentMethodOptions.map((m) => (
+                    <option key={m.key} value={m.label}>
                       {isRtl ? m.labelAr : m.label}
                     </option>
                   ))}
                 </select>
+                {!loading && !paymentMethodOptions.length && (
+                  <p className="text-error text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                    {isRtl
+                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. يرجى التواصل مع الدعم أو تعديل الإعدادات من لوحة التحكم.'
+                      : 'No payment methods are enabled for the active profile. Please contact support.'}
+                  </p>
+                )}
               </div>
               <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
