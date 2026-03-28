@@ -33,7 +33,7 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   };
 
   return (
-    <section id="hero" className="hero py-8 flex flex-col items-center justify-center text-center gap-6">
+    <section id="hero" className="hero hero-section py-8 flex flex-col items-center justify-center text-center gap-6">
       <div className="hero-content" style={{ maxWidth: '800px' }}>
         <h1 className="text-accent" style={{ marginBottom: '1rem', textShadow: '0 0 20px rgba(0,229,255,0.4)', lineHeight: 1.2 }}>
           {heroTitle} <br/> <span style={{ color: '#fff' }}>USDT</span>

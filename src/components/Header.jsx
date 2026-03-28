@@ -28,8 +28,7 @@ export default function Header({ t, lang, toggleLang, links }) {
     <header style={{ position: 'sticky', top: 0, zIndex: 100 }}>
 
       {/* ── Announcement Bar ── */}
-      <div style={{
-        background: '#0a1628',
+      <div className="header-announcement" style={{
         borderBottom: '1px solid rgba(0,229,255,0.2)',
         color: 'var(--accent-primary)', textAlign: 'center',
         padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 700,

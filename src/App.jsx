@@ -61,11 +61,9 @@ function MaintenancePage({ messageAr, messageEn }) {
   const [lang, setLang] = useState('ar');
   const msg = lang === 'ar' ? messageAr : messageEn;
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-      background: '#030712', color: '#f8fafc', padding: '2rem', gap: '1.5rem',
+    <div className="maintenance-page" style={{
       direction: lang === 'ar' ? 'rtl' : 'ltr',
+      color: '#f8fafc',
     }}>
       <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(0,229,255,0.1)', border: '2px solid rgba(0,229,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -99,18 +97,12 @@ export default function App() {
 
   if (!configLoaded) {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-        style={{
-          minHeight: '100vh',
-          background: '#030712',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <div className="app-root" role="status" aria-live="polite" aria-busy="true" style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+      }}>
         <span className="app-shell-loading-spinner" aria-label="Loading" />
       </div>
     );
@@ -119,17 +111,21 @@ export default function App() {
   const maintenance = siteConfig?.maintenance;
 
   if (maintenance?.enabled) {
-    return <MaintenancePage messageAr={maintenance.messageAr} messageEn={maintenance.messageEn} />;
+    return (
+      <div className="app-root">
+        <MaintenancePage messageAr={maintenance.messageAr} messageEn={maintenance.messageEn} />
+      </div>
+    );
   }
 
   return (
-    <>
+    <div className="app-root">
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/buy" element={<BuyPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
       <TelegramFloat contactLink={siteConfig?.links?.contact} />
-    </>
+    </div>
   );
 }

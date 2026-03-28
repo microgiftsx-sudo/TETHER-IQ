@@ -157,9 +157,9 @@ export default function BuyPage() {
 
   if (sent) {
     return (
-      <div className="flex flex-col" style={{ minHeight: '100vh', justifyContent: 'space-between' }}>
+      <div className="page-shell">
         <Header t={t} lang={lang} toggleLang={toggleLang} />
-        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem' }}>
+        <main className="buy-page-main">
           <section className="container py-10" style={{ maxWidth: 900 }}>
             <div className="glass-panel w-full text-center" style={{ padding: '3rem 2rem', border: '2px solid var(--accent-primary)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '1rem', lineHeight: 1 }}>
@@ -184,9 +184,9 @@ export default function BuyPage() {
   }
 
   return (
-    <div className="flex flex-col" style={{ minHeight: '100vh', justifyContent: 'space-between' }}>
+    <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
-      <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem' }}>
+      <main className="buy-page-main">
       <section className="container py-10" style={{ maxWidth: 900 }}>
       <div className="glass-panel buy-panel" style={{ padding: '1.75rem', border: '1px solid var(--accent-primary)' }}>
         <div className="buy-header mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
