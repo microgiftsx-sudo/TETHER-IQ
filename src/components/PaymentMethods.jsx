@@ -69,9 +69,11 @@ export default function PaymentMethods({ t, lang }) {
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(0,229,255,0.15)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
           >
-            {m.image
-              ? <img src={m.image} alt={m.name} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '12px' }} />
-              : m.icon}
+            <div style={{ width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {m.image
+                ? <img src={m.image} alt={m.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                : m.icon}
+            </div>
             <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
               {isRtl ? m.nameAr : m.name}
             </span>
