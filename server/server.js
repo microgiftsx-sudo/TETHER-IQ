@@ -1304,7 +1304,7 @@ async function showTimerMenu(forceChatId = null) {
   );
 }
 
-async function showSiteMenu(forceChatId = null) {
+async function _showSiteMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const maint = cfg.maintenance?.enabled ? '🔴 مفعّل' : '🟢 مطفأ';
   await botSend(
@@ -1991,10 +1991,30 @@ async function handleAdminCommand(text, incomingChatId) {
   const pendingState = getPendingState(incomingChatId);
   if (pendingState) {
     const st = pendingState;
+    if (trimmed === '/cancel') {
+      setPendingState(incomingChatId, null);
+      await sendMainMenu(incomingChatId);
+      return;
+    }
+
+    const setValue = raw.startsWith('/set ') ? raw.slice(5).trim() : '';
+    if (!setValue) {
+      await botSend(
+        '❌ الإدخال المباشر معطّل.\n' +
+        'استخدم <code>/set ...</code> قبل أي قيمة.\n' +
+        'مثال: <code>/set 123</code>',
+        { reply_markup: cancelButton() },
+        incomingChatId,
+      );
+      setPendingState(incomingChatId, st);
+      return;
+    }
+
     setPendingState(incomingChatId, null);
+    const input = setValue;
 
     if (st.action === 'rateFixed') {
-      const val = Number(raw);
+      const val = Number(input);
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
         await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
@@ -2010,7 +2030,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'rateFloat') {
-      const parts = raw.split(/\s+/);
+      const parts = input.split(/\s+/);
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
         await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
@@ -2029,7 +2049,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setTimer') {
-      const mins = Number(raw);
+      const mins = Number(input);
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
         await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
@@ -2051,24 +2071,24 @@ async function handleAdminCommand(text, incomingChatId) {
       }
       const profiles = [...details.profiles];
       const prof = { ...profiles[idx], methods: JSON.parse(JSON.stringify(profiles[idx].methods)) };
-      setByPath(prof.methods, st.path, raw);
+      setByPath(prof.methods, st.path, input);
       profiles[idx] = prof;
       await savePaymentDetails({ ...details, profiles });
-      await botSend(`✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${raw}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } }, incomingChatId);
+      await botSend(`✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${input}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } }, incomingChatId);
       return;
     }
 
     if (st.action === 'addProfile') {
       const d = st.data || {};
       if (st.step === 0) {
-        setPendingState(incomingChatId, { action: 'addProfile', step: 1, data: { nameAr: raw } });
+        setPendingState(incomingChatId, { action: 'addProfile', step: 1, data: { nameAr: input } });
         await botSend('أرسل <b>الاسم بالإنجليزية</b> (اختياري — يمكن إرسال نفس العربي):', { reply_markup: cancelButton() }, incomingChatId);
         return;
       }
       if (st.step === 1) {
         const details = await loadPaymentDetails();
         const id = newProfileId();
-        const nameEn = raw.trim() || d.nameAr;
+        const nameEn = input.trim() || d.nameAr;
         const newP = normalizeProfile({
           id,
           nameAr: d.nameAr,
@@ -2084,33 +2104,33 @@ async function handleAdminCommand(text, incomingChatId) {
 
     if (st.action === 'editSiteField') {
       const cfg = await loadSiteConfig();
-      setByPath(cfg, st.dotPath, raw);
+      setByPath(cfg, st.dotPath, input);
       await saveSiteConfig(cfg);
-      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } });
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${input.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } });
       return;
     }
 
     if (st.action === 'addFaq') {
       const d = st.data || {};
       if (st.step === 0) {
-        setPendingState(incomingChatId, { action: 'addFaq', step: 1, data: { qAr: raw } });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 1, data: { qAr: input } });
         await botSend('✍️ أرسل <b>الجواب بالعربية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 1) {
-        setPendingState(incomingChatId, { action: 'addFaq', step: 2, data: { ...d, aAr: raw } });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 2, data: { ...d, aAr: input } });
         await botSend('🇬🇧 أرسل <b>السؤال بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 2) {
-        setPendingState(incomingChatId, { action: 'addFaq', step: 3, data: { ...d, qEn: raw } });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 3, data: { ...d, qEn: input } });
         await botSend('✍️ أرسل <b>الجواب بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 3) {
         const cfg = await loadSiteConfig();
         const newId = Date.now();
-        cfg.faq = [...(cfg.faq || []), { id: newId, qAr: d.qAr, aAr: d.aAr, qEn: d.qEn, aEn: raw }];
+        cfg.faq = [...(cfg.faq || []), { id: newId, qAr: d.qAr, aAr: d.aAr, qEn: d.qEn, aEn: input }];
         await saveSiteConfig(cfg);
         await botSend(`✅ تمت إضافة السؤال:\n🇸🇦 <b>${d.qAr}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الأسئلة الشائعة', callback_data: 'site_faq' }]] } });
         return;
@@ -2119,17 +2139,17 @@ async function handleAdminCommand(text, incomingChatId) {
 
     if (st.action === 'addReview') {
       const d = st.data || {};
-      if (st.step === 0) { setPendingState(incomingChatId, { action: 'addReview', step: 1, data: { nameAr: raw } }); await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 1) { setPendingState(incomingChatId, { action: 'addReview', step: 2, data: { ...d, cityAr: raw } }); await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 0) { setPendingState(incomingChatId, { action: 'addReview', step: 1, data: { nameAr: input } }); await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 1) { setPendingState(incomingChatId, { action: 'addReview', step: 2, data: { ...d, cityAr: input } }); await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
       if (st.step === 2) {
-        const stars = Math.min(5, Math.max(1, Number(raw) || 5));
+        const stars = Math.min(5, Math.max(1, Number(input) || 5));
         setPendingState(incomingChatId, { action: 'addReview', step: 3, data: { ...d, stars } });
         await botSend('✍️ أرسل <b>نص التقييم:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 3) {
         const list = await loadTestimonials();
-        const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameAr, cityAr: d.cityAr, cityEn: d.cityAr, stars: d.stars, textAr: raw, textEn: raw };
+        const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameAr, cityAr: d.cityAr, cityEn: d.cityAr, stars: d.stars, textAr: input, textEn: input };
         await saveTestimonials([...list, newItem]);
         await botSend(`✅ تمت إضافة التقييم:\n⭐ <b>${d.nameAr}</b> — ${'⭐'.repeat(d.stars)}`, { reply_markup: { inline_keyboard: [[{ text: '🔙 التقييمات', callback_data: 'menu_testimonials' }]] } });
         return;
@@ -2137,7 +2157,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setStat') {
-      const val = Number(raw);
+      const val = Number(input);
       if (!Number.isFinite(val) || val < 0) {
         await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
