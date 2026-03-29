@@ -4,6 +4,16 @@ import { fetchOrderStatus } from '../api';
 import { translations } from '../translations';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import {
+  IconInvoiceHash,
+  IconInvoiceUser,
+  IconInvoiceCoin,
+  IconInvoiceBank,
+  IconInvoiceCard,
+  IconInvoiceLink,
+  IconInvoiceWallet,
+  IconInvoiceClock,
+} from '../components/InvoiceLineIcons';
 
 function formatTrackDate(iso, lang) {
   if (!iso) return '—';
@@ -30,6 +40,18 @@ function badgeClass(status) {
     default:
       return 'order-track-badge order-track-badge--processing';
   }
+}
+
+function InvoiceRow({ icon: Icon, label, children, mono }) {
+  return (
+    <div className="order-track-row">
+      <span className="order-track-row-label">
+        <Icon className="order-track-icon" />
+        {label}
+      </span>
+      <span className={mono ? 'order-track-value-mono order-track-row-value' : 'order-track-row-value'}>{children}</span>
+    </div>
+  );
 }
 
 export default function OrderTrackPage() {
@@ -155,20 +177,39 @@ export default function OrderTrackPage() {
             dir={isRtl ? 'rtl' : 'ltr'}
           >
             {data && (
-              <p className="only-print invoice-print-doc-title">
-                {t.trackInvoicePrintTitle} — {data.orderId}
-              </p>
-            )}
-            <div className="order-track-top">
-              <div className="order-track-title-block">
-                <h1 className="order-track-title">{t.trackOrderTitle}</h1>
-                <p className="order-track-subtitle">{t.trackOrderSubtitle}</p>
-              </div>
-              {data && (
-                <div className={badgeClass(data.status)} role="status" aria-live="polite">
-                  {statusLabel(data)}
+              <div className="only-print invoice-pro-print">
+                <div className="invoice-pro-print-head">
+                  <img src="/logo.png" alt="" className="invoice-pro-logo" />
+                  <div className="invoice-pro-print-text">
+                    <div className="invoice-pro-site">TETHER IQ</div>
+                    <div className="invoice-pro-doc">{t.trackInvoicePrintTitle}</div>
+                    <div className="invoice-pro-id mono">{data.orderId}</div>
+                  </div>
+                  <div className={`${badgeClass(data.status)} invoice-pro-badge`}>{statusLabel(data)}</div>
                 </div>
-              )}
+                <div className="invoice-pro-rule" />
+              </div>
+            )}
+
+            <div className="no-print invoice-screen-head">
+              <div className="invoice-card-brand">
+                <img src="/logo.png" alt="" width={44} height={44} style={{ objectFit: 'contain' }} />
+                <div>
+                  <div className="invoice-card-brand-name">TETHER IQ</div>
+                  <div className="invoice-card-brand-sub text-muted text-sm">{t.trackInvoicePrintTitle}</div>
+                </div>
+              </div>
+              <div className="order-track-top">
+                <div className="order-track-title-block">
+                  <h1 className="order-track-title">{t.trackOrderTitle}</h1>
+                  <p className="order-track-subtitle">{t.trackOrderSubtitle}</p>
+                </div>
+                {data && (
+                  <div className={badgeClass(data.status)} role="status" aria-live="polite">
+                    {statusLabel(data)}
+                  </div>
+                )}
+              </div>
             </div>
 
             {orderId && typeof Notification !== 'undefined' && notifyPerm === 'default' && (
@@ -202,38 +243,34 @@ export default function OrderTrackPage() {
 
             {data && (
               <div className="order-track-details">
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackOrderId}</span>
-                  <span className="order-track-value-mono">{data.orderId}</span>
-                </div>
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackName}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{data.name}</span>
-                </div>
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackUsdt}</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{data.usdtAmount} USDT</span>
-                </div>
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackIqd}</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{data.iqdAmount}</span>
-                </div>
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackPayment}</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{data.paymentMethod}</span>
-                </div>
-                <div className="order-track-row">
-                  <span className="text-muted">{t.trackNetwork}</span>
-                  <span style={{ color: 'var(--text-primary)' }}>{data.network}</span>
-                </div>
+                <InvoiceRow icon={IconInvoiceHash} label={t.trackOrderId} mono>
+                  {data.orderId}
+                </InvoiceRow>
+                <InvoiceRow icon={IconInvoiceUser} label={t.trackName}>
+                  {data.name}
+                </InvoiceRow>
+                <InvoiceRow icon={IconInvoiceCoin} label={t.trackUsdt}>
+                  {data.usdtAmount} USDT
+                </InvoiceRow>
+                <InvoiceRow icon={IconInvoiceBank} label={t.trackIqd}>
+                  {data.iqdAmount}
+                </InvoiceRow>
+                <InvoiceRow icon={IconInvoiceCard} label={t.trackPayment}>
+                  {data.paymentMethod}
+                </InvoiceRow>
+                <InvoiceRow icon={IconInvoiceLink} label={t.trackNetwork}>
+                  {data.network}
+                </InvoiceRow>
                 {data.walletMasked ? (
-                  <div className="order-track-row">
-                    <span className="text-muted">{t.trackWallet}</span>
-                    <span className="order-track-value-mono">{data.walletMasked}</span>
-                  </div>
+                  <InvoiceRow icon={IconInvoiceWallet} label={t.trackWallet} mono>
+                    {data.walletMasked}
+                  </InvoiceRow>
                 ) : null}
                 <div className="order-track-meta">
-                  {t.trackUpdated}: {formatTrackDate(data.updatedAt, lang)}
+                  <span className="order-track-meta-inner">
+                    <IconInvoiceClock className="order-track-icon order-track-icon--meta" />
+                    {t.trackUpdated}: {formatTrackDate(data.updatedAt, lang)}
+                  </span>
                 </div>
               </div>
             )}

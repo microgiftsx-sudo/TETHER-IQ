@@ -269,21 +269,43 @@ footer.glass-panel {
 }
 
 .order-track-badge--completed {
-  background: rgba(34, 197, 94, 0.22);
-  color: #bbf7d0;
-  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(22, 163, 74, 0.35);
+  color: #ecfdf5;
+  border-color: rgba(34, 197, 94, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .order-track-badge--cancelled {
-  background: rgba(248, 113, 113, 0.18);
-  color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(220, 38, 38, 0.35);
+  color: #fef2f2;
+  border-color: rgba(248, 113, 113, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .order-track-badge--archived {
-  background: rgba(148, 163, 184, 0.2);
-  color: #e2e8f0;
-  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(100, 116, 139, 0.35);
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.invoice-card-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+}
+
+.invoice-card-brand-name {
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--accent-primary);
+  letter-spacing: 0.02em;
+}
+
+.invoice-screen-head {
+  margin-bottom: 0.25rem;
 }
 
 .order-track-details {
@@ -304,9 +326,38 @@ footer.glass-panel {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.order-track-row:last-of-type {
+.order-track-details > .order-track-row:last-of-type {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+.order-track-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.order-track-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  opacity: 0.95;
+}
+
+.order-track-icon--meta {
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+
+.order-track-row-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: end;
+  max-width: 58%;
 }
 
 .order-track-value-mono {
@@ -319,10 +370,16 @@ footer.glass-panel {
 
 .order-track-meta {
   margin-top: 0.75rem;
-  padding-top: 0.65rem;
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+  font-size: 0.82rem;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.order-track-meta-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .order-track-notify {
@@ -361,13 +418,61 @@ footer.glass-panel {
   display: none;
 }
 
-.invoice-print-doc-title {
-  margin: 0 0 1rem;
-  font-size: 1rem;
+/* طباعة PDF — ترويسة نظيفة مثل فواتير الشركات */
+.invoice-pro-print {
+  margin-bottom: 1.25rem;
+}
+
+.invoice-pro-print-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.invoice-pro-logo {
+  max-height: 48px;
+  width: auto;
+  object-fit: contain;
+}
+
+.invoice-pro-print-text {
+  flex: 1;
+  min-width: 180px;
+}
+
+.invoice-pro-site {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.invoice-pro-doc {
+  font-size: 1.05rem;
   font-weight: 700;
   color: #0f172a;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  margin-top: 0.15rem;
+}
+
+.invoice-pro-id.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  color: #0369a1;
+  margin-top: 0.2rem;
+  font-weight: 600;
+}
+
+.invoice-pro-badge {
+  align-self: center;
+}
+
+.invoice-pro-rule {
+  height: 1px;
+  background: #e2e8f0;
+  margin-top: 1rem;
 }
 
 @media print {
@@ -396,33 +501,67 @@ footer.glass-panel {
 
   .order-invoice-shell {
     background: #fff !important;
-    color: #111 !important;
-    border: 1px solid #ddd !important;
+    color: #0f172a !important;
+    border: 1px solid #e2e8f0 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
+    padding: 1.5rem !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  .order-track-title {
+  .order-track-badge--processing {
+    background: #e0f2fe !important;
     color: #0369a1 !important;
+    border: 1px solid #7dd3fc !important;
+    text-shadow: none !important;
   }
 
-  .order-track-subtitle,
-  .text-muted {
-    color: #475569 !important;
+  .order-track-badge--completed {
+    background: #16a34a !important;
+    color: #fff !important;
+    border: 1px solid #15803d !important;
+    text-shadow: none !important;
   }
 
-  .order-track-badge {
-    border: 1px solid #ccc !important;
+  .order-track-badge--cancelled {
+    background: #dc2626 !important;
+    color: #fff !important;
+    border: 1px solid #b91c1c !important;
+    text-shadow: none !important;
+  }
+
+  .order-track-badge--archived {
+    background: #64748b !important;
+    color: #fff !important;
+    border: 1px solid #475569 !important;
+    text-shadow: none !important;
   }
 
   .order-track-row {
     border-bottom-color: #e2e8f0 !important;
   }
 
+  .order-track-row-label {
+    color: #475569 !important;
+  }
+
+  .order-track-icon {
+    color: #0369a1 !important;
+    opacity: 1 !important;
+  }
+
+  .order-track-row-value {
+    color: #0f172a !important;
+  }
+
   .order-track-value-mono {
     color: #0369a1 !important;
+  }
+
+  .order-track-meta {
+    color: #334155 !important;
+    border-top-color: #cbd5e1 !important;
   }
 }
 
