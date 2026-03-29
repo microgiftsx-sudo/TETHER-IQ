@@ -2097,12 +2097,20 @@ h3 { font-size: 1.25rem; }
 .web-chat-panel__messages {
   flex: 1;
   overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   padding: 0.75rem;
   min-height: 220px;
   max-height: 320px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.web-chat-panel__messages::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .web-chat-msg {
