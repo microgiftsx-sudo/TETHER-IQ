@@ -1001,6 +1001,13 @@ function setByPath(obj, p, value) {
   return true;
 }
 
+/** تيليغرام يعرض أزرار اللوحة ملاصقة لآخر سطر؛ أسطر زائدة تفصل بصرياً بين النص والأزرار */
+function padTextBeforeInlineKeyboard(text, hasInlineKeyboard) {
+  if (!hasInlineKeyboard) return String(text ?? '');
+  const s = String(text ?? '').replace(/\s+$/, '');
+  return `${s}\n\n`;
+}
+
 async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -1010,9 +1017,11 @@ async function botSend(text, extra = {}, forceChatId = null) {
     if (!botToken || !finalChatId) return;
 
     const { chat_id: _ignoreChat, ...restExtra } = extra;
+    const hasInlineKb = Boolean(restExtra.reply_markup?.inline_keyboard?.length);
+    const textOut = padTextBeforeInlineKeyboard(text, hasInlineKb);
     const { data } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: telegramChatIdForApi(finalChatId),
-      text,
+      text: textOut,
       parse_mode: 'HTML',
       ...restExtra,
     });
