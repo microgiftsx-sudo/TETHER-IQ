@@ -14,7 +14,7 @@ export default function ContactSection({ t, lang, contactLink }) {
           />
         </svg>
       ),
-      action: () => window.open(tgLink, '_blank'),
+      action: () => window.open(tgLink, '_blank', 'noopener,noreferrer'),
     },
   ];
 
