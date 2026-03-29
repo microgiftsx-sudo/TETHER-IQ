@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createChatSession, sendChatMessage, fetchChatMessages } from '../api';
 
 const STORAGE_KEY = 'web_chat_session_id';
+const NAME_KEY = 'web_chat_visitor_name';
+const LOCK_KEY = 'web_chat_name_locked';
 
 export default function ChatWidget({ t, lang }) {
   const isRtl = lang === 'ar';
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState(() => localStorage.getItem(STORAGE_KEY) || '');
-  const [visitorName, setVisitorName] = useState('');
+  const [visitorName, setVisitorName] = useState(() => localStorage.getItem(NAME_KEY) || '');
+  const [nameLocked, setNameLocked] = useState(() => localStorage.getItem(LOCK_KEY) === '1');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [lastId, setLastId] = useState(0);
@@ -20,6 +23,19 @@ export default function ChatWidget({ t, lang }) {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   };
+
+  const lockName = useCallback((name) => {
+    const n = String(name || '').trim();
+    if (!n) return;
+    try {
+      localStorage.setItem(NAME_KEY, n);
+      localStorage.setItem(LOCK_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    setVisitorName(n);
+    setNameLocked(true);
+  }, []);
 
   const ensureSession = useCallback(async () => {
     let sid = localStorage.getItem(STORAGE_KEY);
@@ -79,6 +95,11 @@ export default function ChatWidget({ t, lang }) {
   const onOpen = async () => {
     setError('');
     try {
+      if (localStorage.getItem(LOCK_KEY) === '1') {
+        const n = localStorage.getItem(NAME_KEY);
+        if (n) setVisitorName(n);
+        setNameLocked(true);
+      }
       await ensureSession();
       const sid = localStorage.getItem(STORAGE_KEY);
       setSessionId(sid || '');
@@ -92,6 +113,27 @@ export default function ChatWidget({ t, lang }) {
     }
   };
 
+  const newTicket = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      const { sessionId: newId } = await createChatSession();
+      localStorage.setItem(STORAGE_KEY, newId);
+      setSessionId(newId);
+      setMessages([]);
+      setLastId(0);
+      const { messages: initial } = await fetchChatMessages(newId, 0);
+      setMessages(initial || []);
+      const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
+      setLastId(max);
+    } catch (e) {
+      setError(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onSend = async (e) => {
     e.preventDefault();
     const text = input.trim();
@@ -100,7 +142,9 @@ export default function ChatWidget({ t, lang }) {
     setError('');
     try {
       const sid = sessionId || (await ensureSession());
-      await sendChatMessage(sid, text, visitorName.trim());
+      const nm = visitorName.trim();
+      await sendChatMessage(sid, text, nm);
+      if (nm) lockName(nm);
       setInput('');
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
     } catch (err) {
@@ -166,47 +210,93 @@ export default function ChatWidget({ t, lang }) {
         >
           <div
             style={{
-              padding: '0.85rem 1rem',
+              padding: '0.75rem 1rem',
               background: 'linear-gradient(90deg, rgba(0,229,255,0.12), rgba(3,105,161,0.2))',
               borderBottom: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               justifyContent: 'space-between',
               gap: '0.5rem',
             }}
           >
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '0.95rem' }}>{t.chatTitle}</div>
-              <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 2 }}>{t.chatSubtitle}</div>
+              <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 2, lineHeight: 1.35 }}>{t.chatSubtitle}</div>
+              <div className="text-muted" style={{ fontSize: '0.68rem', marginTop: 3, lineHeight: 1.35, opacity: 0.9 }}>{t.chatTicketHint}</div>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="text-muted"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '1.1rem',
-                padding: '0.25rem',
-                lineHeight: 1,
-              }}
-              aria-label={t.chatMinimize}
-            >
-              ×
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={newTicket}
+                disabled={loading}
+                className="text-muted"
+                title={t.chatNewTicket}
+                style={{
+                  background: 'rgba(0,229,255,0.12)',
+                  border: '1px solid rgba(0,229,255,0.25)',
+                  color: 'var(--accent-primary)',
+                  cursor: loading ? 'wait' : 'pointer',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '8px',
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t.chatNewTicket}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="text-muted"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.1rem',
+                  padding: '0.25rem',
+                  lineHeight: 1,
+                }}
+                aria-label={t.chatMinimize}
+                title={t.chatMinimize}
+              >
+                ×
+              </button>
+            </div>
           </div>
 
-          <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <input
-              type="text"
-              className="input-control"
-              placeholder={t.chatNamePlaceholder}
-              value={visitorName}
-              onChange={(e) => setVisitorName(e.target.value)}
-              style={{ fontSize: '0.85rem', padding: '0.45rem 0.6rem' }}
-            />
-          </div>
+          {!nameLocked ? (
+            <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <input
+                type="text"
+                className="input-control"
+                placeholder={t.chatNamePlaceholder}
+                value={visitorName}
+                onChange={(e) => setVisitorName(e.target.value)}
+                style={{ fontSize: '0.85rem', padding: '0.45rem 0.6rem' }}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                fontSize: '0.82rem',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden style={{ flexShrink: 0, opacity: 0.85 }}>
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>{t.chatYourName}:</span>
+              <strong style={{ color: 'var(--accent-primary)' }}>{visitorName}</strong>
+            </div>
+          )}
 
           <div
             ref={listRef}

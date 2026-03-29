@@ -115,9 +115,29 @@ function chatRateOk(req) {
   return true;
 }
 
+/** دعم الموقع (محادثة العملاء) — يفضّل مجموعة منفصلة عن الطلبات والإعدادات */
+function telegramSupportChatId() {
+  return String(
+    process.env.TELEGRAM_SUPPORT_CHAT_ID
+      || process.env.TELEGRAM_WEBCHAT_CHAT_ID
+      || process.env.TELEGRAM_CHAT_ID
+      || '',
+  ).trim();
+}
+
+/** طلبات الشراء والإثباتات */
+function telegramOrdersChatId() {
+  return String(process.env.TELEGRAM_ORDERS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+}
+
+/** أوامر البوت والقوائم وCRM — غالباً مجموعة الإدارة */
+function telegramSettingsChatId() {
+  return String(process.env.TELEGRAM_SETTINGS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+}
+
 async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = telegramSupportChatId();
   if (!botToken || !chatId) return null;
   const nameLine = visitorName
     ? `👤 <i>${escapeTelegramHtml(visitorName)}</i>`
@@ -549,7 +569,12 @@ app.get('/api/payment-details', async (_req, res) => {
 app.post('/api/order', async (req, res) => {
   try {
     const botToken = envRequired('TELEGRAM_BOT_TOKEN');
-    const chatId = envRequired('TELEGRAM_CHAT_ID');
+    const chatId = telegramOrdersChatId();
+    if (!chatId) {
+      return res.status(503).json({
+        error: 'Missing Telegram orders chat: set TELEGRAM_ORDERS_CHAT_ID or TELEGRAM_CHAT_ID in .env',
+      });
+    }
 
     const {
       orderId,
@@ -761,6 +786,11 @@ function helpText() {
     '📈 CRM (زيارات وطلبات):',
     'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
     '',
+    '📱 قنوات تيليجرام (.env):',
+    'TELEGRAM_SETTINGS_CHAT_ID — أوامر البوت والقوائم (إن لم تُضبط يُستخدم TELEGRAM_CHAT_ID).',
+    'TELEGRAM_SUPPORT_CHAT_ID — مجموعة/قناة دردشة دعم الموقع (محادثة العملاء).',
+    'TELEGRAM_ORDERS_CHAT_ID — مجموعة إشعارات الطلبات الجديدة.',
+    '',
     '💬 محادثة الموقع (العملاء):',
     'عند وصول إشعار «رسالة من الموقع» — اضغط «رد» على ذلك الإشعار واكتب جوابك.',
     'أو: /reply sess_xxx نص الرسالة',
@@ -798,7 +828,7 @@ function setByPath(obj, p, value) {
 async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const defaultChatId = process.env.TELEGRAM_CHAT_ID;
+    const defaultChatId = telegramSettingsChatId();
     const finalChatId = forceChatId || extra.chat_id || defaultChatId;
 
     if (!botToken || !finalChatId) return;

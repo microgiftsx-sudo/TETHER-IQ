@@ -5,6 +5,8 @@ import { getPaymentDetails } from '../api';
 export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   const navigate = useNavigate();
   const [RATE, setRATE] = useState(1320);
+  const [iqdEditing, setIqdEditing] = useState(false);
+  const [iqdDraft, setIqdDraft] = useState('');
   const isRtl = lang === 'ar';
   const isAr = lang === 'ar';
   const heroTitle    = hero ? (isAr ? hero.titleAr    : hero.titleEn)    || t.heroTitle    : t.heroTitle;
@@ -17,8 +19,30 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   }, []);
 
   const handleUsdtChange = (e) => {
+    setIqdEditing(false);
     const val = parseFloat(e.target.value) || 0;
     setUsdtAmount(val);
+  };
+
+  const iqdTotal = Math.max(0, Math.round(usdtAmount * RATE));
+
+  const handleIqdFocus = () => {
+    setIqdEditing(true);
+    setIqdDraft(String(iqdTotal));
+  };
+
+  const handleIqdBlur = () => {
+    setIqdEditing(false);
+  };
+
+  const handleIqdChange = (e) => {
+    const raw = e.target.value.replace(/[^\d]/g, '');
+    setIqdDraft(raw);
+    const iqd = parseInt(raw, 10) || 0;
+    if (RATE <= 0) return;
+    const usdt = iqd / RATE;
+    const rounded = Math.round(usdt * 100) / 100;
+    setUsdtAmount(Math.min(1e8, Math.max(0, rounded)));
   };
 
   const goToBuy = () => {
@@ -85,9 +109,12 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
           <div style={{ position: 'relative' }}>
             <input 
               type="text" 
+              inputMode="numeric"
               className="input-control" 
-              value={(usdtAmount * RATE).toLocaleString()} 
-              readOnly 
+              value={iqdEditing ? iqdDraft : iqdTotal.toLocaleString()} 
+              onChange={handleIqdChange}
+              onFocus={handleIqdFocus}
+              onBlur={handleIqdBlur}
               style={{ 
                 fontSize: '1.5rem', fontWeight: 'bold', 
                 backgroundColor: 'rgba(0,0,0,0.3)',
