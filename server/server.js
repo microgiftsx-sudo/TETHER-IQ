@@ -130,6 +130,11 @@ function normalizeTelegramChatId(raw) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
+  // أخطاء شائعة في Railway / لصق المتغيرات: =-100... أو chat_id=-100...
+  while (s.startsWith('=')) s = s.slice(1).trim();
+  if (/^chat_id\s*=/i.test(s)) {
+    s = s.replace(/^chat_id\s*=\s*/i, '').trim();
+  }
   return s;
 }
 
@@ -148,6 +153,40 @@ function maskChatIdForLog(id) {
 function logTelegramChatEnvAtStartup() {
   console.log('[telegram] SUPPORT_CHAT_ID (دعم الموقع + إشعارات الطلبات)', maskChatIdForLog(telegramSupportChatId()));
   console.log('[telegram] SETTINGS_CHAT_ID (البوت والإدارة)', maskChatIdForLog(telegramSettingsChatId()));
+}
+
+/** تحقق من صلاحية chat_id عبر getChat — يفسّر أخطاء «chat not found» في السجلات */
+async function probeTelegramChatsAtStartup() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  const checks = [
+    ['SETTINGS (أوامر البوت / CRM)', telegramSettingsChatId()],
+    ['SUPPORT (دعم + طلبات الشراء)', telegramSupportChatId()],
+  ];
+  for (const [label, rawId] of checks) {
+    if (!rawId || rawId === 'YOUR_CHAT_ID_HERE') continue;
+    const chatId = telegramChatIdForApi(rawId);
+    try {
+      const r = await fetch(
+        `https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(chatId)}`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      const j = await r.json();
+      if (!j?.ok) {
+        console.error(
+          `[telegram] ❌ ${label} معرف غير صالح أو البوت ليس في المحادثة (${chatId}): ${j?.description || 'unknown'}`,
+        );
+        console.error(
+          '[telegram]   → أضف البوت إلى المجموعة، أو صحّح TELEGRAM_SETTINGS_CHAT_ID / TELEGRAM_SUPPORT_CHAT_ID في Railway (بدون علامة = زائدة).',
+        );
+      } else {
+        const title = j.result?.title || j.result?.username || j.result?.first_name || 'ok';
+        console.log(`[telegram] ✅ ${label}: ${title}`);
+      }
+    } catch (e) {
+      console.error(`[telegram] فشل التحقق من ${label}:`, e?.message || e);
+    }
+  }
 }
 
 /** دعم الموقع، دردشة الزوار، وإشعارات طلبات الشراء — مجموعة واحدة */
@@ -711,20 +750,30 @@ function orderStatusLabelAr(status) {
  * تحميل صورة من رابط تيليغرام وحفظها محلياً في QR_DIR.
  * يُرجع اسم الملف المحلي (بدون مسار).
  */
+/**
+ * يحمّل ملف QR من رابط file تيليغرام. الروابط تنتهي صلاحيتها → 404 شائع.
+ * @returns {{ status: 'saved', filename: string } | { status: 'skip' } | { status: 'clear', reason: string }}
+ */
 async function downloadQrToLocal(telegramUrl, profileId, methodKey) {
-  if (!telegramUrl || !telegramUrl.includes('api.telegram.org')) return '';
+  if (!telegramUrl || !telegramUrl.includes('api.telegram.org')) return { status: 'skip' };
   const ext = (telegramUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i) || [, 'jpg'])[1];
   const filename = `${profileId}_${methodKey}.${ext}`;
   const dest = path.join(QR_DIR, filename);
   try {
     const resp = await fetch(telegramUrl, { signal: AbortSignal.timeout(15000) });
+    if (resp.status === 404) {
+      console.warn(
+        `[QR download] ${methodKey}: HTTP 404 — رابط ملف تيليغرام منتهٍ أو محذوف. سيتم مسح الحقل من الإعدادات.`,
+      );
+      return { status: 'clear', reason: 'telegram_file_expired_or_missing' };
+    }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const buf = Buffer.from(await resp.arrayBuffer());
     await writeFile(dest, buf);
-    return filename;
+    return { status: 'saved', filename };
   } catch (e) {
     console.error(`[QR download] ${methodKey}:`, e?.message || e);
-    return '';
+    return { status: 'skip' };
   }
 }
 
@@ -739,9 +788,12 @@ async function migrateQrUrlsToLocal(details) {
     for (const key of METHOD_KEYS) {
       const m = profile.methods?.[key];
       if (!m?.qrImage || !m.qrImage.includes('api.telegram.org')) continue;
-      const localName = await downloadQrToLocal(m.qrImage, profile.id, key);
-      if (localName) {
-        m.qrImage = `/api/qr/${localName}`;
+      const result = await downloadQrToLocal(m.qrImage, profile.id, key);
+      if (result.status === 'saved' && result.filename) {
+        m.qrImage = `/api/qr/${result.filename}`;
+        changed = true;
+      } else if (result.status === 'clear') {
+        m.qrImage = '';
         changed = true;
       }
     }
@@ -2520,11 +2572,12 @@ app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   logTelegramChatEnvAtStartup();
   initDataFiles()
+    .then(() => probeTelegramChatsAtStartup())
     .then(async () => {
       try {
         const d = await loadPaymentDetails();
         const migrated = await migrateQrUrlsToLocal(d);
-        if (migrated) console.log('[QR] Migrated Telegram URLs to local files');
+        if (migrated) console.log('[QR] Migrated Telegram URLs to local files (or cleared expired links)');
       } catch (e) {
         console.error('[QR migration]', e?.message || e);
       }
