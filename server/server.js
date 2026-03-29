@@ -129,10 +129,6 @@ function normalizeTelegramChatId(raw) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
-  /* خطأ شائع في .env: TELEGRAM_*_CHAT_ID==-1234567890 — dotenv يعطي قيمة تبدأ بـ = */
-  while (s.startsWith('=')) {
-    s = s.slice(1).trim();
-  }
   return s;
 }
 
@@ -210,6 +206,30 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
 
 const app = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
+
+/**
+ * رؤوس HTTP أساسية: تقليل مخاطر MIME sniffing / clickjacking، وHSTS عند HTTPS في الإنتاج.
+ * تحذير «موقع خطير» في كروم غالباً من Google Safe Browsing — راجع القسم التوضيحي في نهاية الملف.
+ */
+function applySecurityHeaders(req, res, next) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=()',
+  );
+  const xfProto = String(req.get('x-forwarded-proto') || '')
+    .split(',')[0]
+    .trim();
+  const secure = req.secure || xfProto === 'https';
+  if (IS_PROD && secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  next();
+}
+app.use(applySecurityHeaders);
+
 const corsOrigins = String(process.env.CORS_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
@@ -330,19 +350,6 @@ async function saveStats(data) {
   return next;
 }
 
-/** زيادة حقل من stats.json (للعرض في الموقع — TrustStats) */
-async function incrementStatField(field, delta = 1) {
-  const allowed = new Set(['customers', 'transactions', 'years', 'satisfaction']);
-  if (!allowed.has(field)) return null;
-  const d = Math.floor(Number(delta));
-  if (!Number.isFinite(d) || d === 0) return null;
-  const stats = await loadStats();
-  const cur = Math.floor(Number(stats[field]));
-  const base = Number.isFinite(cur) ? cur : 0;
-  stats[field] = Math.max(0, base + d);
-  return saveStats(stats);
-}
-
 async function loadTestimonials() {
   try { return JSON.parse(await readFile(TESTIMONIALS_PATH, 'utf8')); }
   catch { return []; }
@@ -418,14 +425,8 @@ app.get('/api/site-config', async (_req, res) => {
 });
 
 app.get('/api/stats', async (_req, res) => {
-  try {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.json(await loadStats());
-  } catch (e) {
-    res.status(500).json({ error: String(e?.message || e) });
-  }
+  try { res.json(await loadStats()); }
+  catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
 });
 
 app.get('/api/testimonials', async (_req, res) => {
@@ -872,11 +873,6 @@ app.post('/api/order', async (req, res) => {
         paymentDetail: String(paymentDetail || ''),
         senderNumber: senderTrim,
       });
-      try {
-        await incrementStatField('transactions', 1);
-      } catch (e) {
-        console.error('[stats] increment transactions failed', e?.message || e);
-      }
     } catch (err) {
        
       console.error('[CRM] order log failed', err?.message || err);
@@ -940,19 +936,6 @@ let pendingState = null; // { action, path?, label?, method? }
 function isAdminMessage(msg) {
   const fromId = msg?.from?.id;
   return fromId && adminIds.has(String(fromId));
-}
-
-/** تحويل الأرقام العربية/الفارسية إلى أرقام غربية لـ Number() */
-function normalizeWesternDigits(str) {
-  let s = String(str ?? '');
-  const arabic = '٠١٢٣٤٥٦٧٨٩';
-  const persian = '۰۱۲۳۴۵۶۷۸۹';
-  const western = '0123456789';
-  for (let i = 0; i < 10; i += 1) {
-    s = s.split(arabic[i]).join(western[i]);
-    s = s.split(persian[i]).join(western[i]);
-  }
-  return s;
 }
 
 function helpText() {
@@ -1020,13 +1003,6 @@ function setByPath(obj, p, value) {
   return true;
 }
 
-/** تيليغرام يعرض أزرار اللوحة ملاصقة لآخر سطر؛ أسطر زائدة تفصل بصرياً بين النص والأزرار */
-function padTextBeforeInlineKeyboard(text, hasInlineKeyboard) {
-  if (!hasInlineKeyboard) return String(text ?? '');
-  const s = String(text ?? '').replace(/\s+$/, '');
-  return `${s}\n\n`;
-}
-
 async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -1036,24 +1012,16 @@ async function botSend(text, extra = {}, forceChatId = null) {
     if (!botToken || !finalChatId) return;
 
     const { chat_id: _ignoreChat, ...restExtra } = extra;
-    const hasInlineKb = Boolean(restExtra.reply_markup?.inline_keyboard?.length);
-    const textOut = padTextBeforeInlineKeyboard(text, hasInlineKb);
     const { data } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: telegramChatIdForApi(finalChatId),
-      text: textOut,
+      text,
       parse_mode: 'HTML',
       ...restExtra,
     });
 
     if (!data?.ok) {
-      const desc = String(data?.description || '');
-      console.error(`Bot: sendMessage failed for ${maskChatIdForLog(finalChatId)}:`, JSON.stringify(data));
-      if (desc.toLowerCase().includes('chat not found')) {
-        console.error(
-          '[telegram] chat not found: تحقق من TELEGRAM_SETTINGS_CHAT_ID / TELEGRAM_SUPPORT_CHAT_ID — '
-          + 'علامة = واحدة في .env (لا تستخدم ==)، والبوت عضو في المجموعة/القناة.',
-        );
-      }
+       
+      console.error(`Bot: sendMessage failed for ${finalChatId}:`, JSON.stringify(data));
     }
   } catch (err) {
      
@@ -1368,7 +1336,7 @@ async function showTestimonialsMenu(forceChatId = null) {
 async function showStatsMenu(forceChatId = null) {
   const s = await loadStats();
   await botSend(
-    `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b> <i>(+1 تلقائياً مع كل طلب جديد من الموقع)</i>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
+    `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '👥 تعديل عدد العملاء', callback_data: 'stat_customers' }],
       [{ text: '✅ تعديل عدد العمليات', callback_data: 'stat_transactions' }],
@@ -1961,7 +1929,7 @@ async function handleAdminCommand(text, incomingChatId) {
     pendingState = null;
 
     if (st.action === 'rateFixed') {
-      const val = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
+      const val = Number(raw);
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
         await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -1977,8 +1945,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'rateFloat') {
-      const norm = normalizeWesternDigits(raw).replace(/[,\s\u066C]+/g, ' ').trim();
-      const parts = norm.split(/\s+/);
+      const parts = raw.split(/\s+/);
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
         await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
@@ -1997,7 +1964,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setTimer') {
-      const mins = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
+      const mins = Number(raw);
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
         await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -2056,7 +2023,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const cfg = await loadSiteConfig();
       setByPath(cfg, st.dotPath, raw);
       await saveSiteConfig(cfg);
-      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } }, incomingChatId);
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } });
       return;
     }
 
@@ -2107,7 +2074,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setStat') {
-      const val = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
+      const val = Number(raw);
       if (!Number.isFinite(val) || val < 0) {
         await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -2351,22 +2318,12 @@ async function tryHandleStaffChatReply(msg) {
     sessionId = parseSessionIdFromTelegramText(parentText);
   }
   if (!sessionId || !store.sessions[sessionId]) {
-    /*
-     * كان الكود يُرسل خطأً ويعيد true فيمنع handleAdminCommand.
-     * عند «الرد» على طلبات لوحة التحكم (إحصائيات، سعر، إلخ) لا توجد جلسة webchat —
-     * فيجب ترك الرسالة لتُعالَج كإدخال معلّق (pending).
-     */
-    const parentText = reply.text || reply.caption || '';
-    const looksLikeWebChatInbound = /رسالة من الموقع|💬.*موقع|sess_[a-z0-9_]+/i.test(parentText);
-    if (looksLikeWebChatInbound) {
-      await botSend(
-        '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
-        {},
-        msg.chat.id
-      );
-      return true;
-    }
-    return false;
+    await botSend(
+      '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
+      {},
+      msg.chat.id
+    );
+    return true;
   }
   appendStaffMessage(store, sessionId, text);
   await saveChatStore(CHAT_PATH, store);
@@ -2488,11 +2445,13 @@ if (IS_PROD) {
   });
 }
 
+// تحذير المتصفّح «موقع ضارّ/خطير»: غالباً قائمة Google Safe Browsing — ليست دائماً من الكود.
+// راجع Search Console → Security، شهادة SSL، وعدم استضافة محتوى/روابط مشبوهة. الرؤوس أعلاه تساعد الثقة التقنية فقط.
+
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   logTelegramChatEnvAtStartup();
   initDataFiles().then(() => drainPendingUpdates()).then(() => {
-    console.log('[data] stats.json path:', STATS_PATH, '(ضبط DATA_DIR على Railway ليطابق مجلد الـ Volume)');
     const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
     loopPoll();
      

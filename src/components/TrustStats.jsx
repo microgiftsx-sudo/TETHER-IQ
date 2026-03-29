@@ -90,21 +90,11 @@ export default function TrustStats({ t }) {
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => {
-      getStats().then((d) => {
-        if (!cancelled) setData(d);
-      });
-    };
-    load();
-    const interval = setInterval(load, 30000);
-    const onVis = () => {
-      if (document.visibilityState === 'visible') load();
-    };
-    document.addEventListener('visibilitychange', onVis);
+    getStats().then((d) => {
+      if (!cancelled) setData(d);
+    });
     return () => {
       cancelled = true;
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
 
