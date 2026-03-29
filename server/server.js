@@ -1998,8 +1998,8 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     setPendingState(incomingChatId, null);
-    // "/set" remains supported, but user can send plain value.
-    const input = raw.startsWith('/set ') ? raw.slice(5).trim() : raw;
+    // "/set" remains optional: user may send plain value, and we normalize "/set value" internally.
+    const input = raw.replace(/^\/set\s+/i, '').trim();
     if (!input) {
       await botSend('❌ أرسل قيمة صحيحة.', { reply_markup: cancelButton() }, incomingChatId);
       setPendingState(incomingChatId, st);
