@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import BuyPage from './pages/BuyPage';
 import OrderTrackPage from './pages/OrderTrackPage';
+import MyOrdersPage from './pages/MyOrdersPage';
+import LegalPage from './pages/LegalPage';
 import AdminCrmPage from './pages/AdminCrmPage';
 import VisitTracker from './components/VisitTracker';
 import ChatWidget from './components/ChatWidget';
@@ -85,6 +87,11 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/buy" element={<BuyPage />} />
         <Route path="/track" element={<OrderTrackPage />} />
+        <Route path="/my-orders" element={<MyOrdersPage />} />
+        <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+        <Route path="/terms" element={<LegalPage doc="terms" />} />
+        <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
+        <Route path="/about" element={<LegalPage doc="about" />} />
         <Route path="/admin/crm" element={<AdminCrmPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>

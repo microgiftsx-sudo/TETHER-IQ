@@ -7,14 +7,20 @@ export default function Header({ t, lang, toggleLang, links }) {
   const navigate = useNavigate();
 
   const navLinks = [
-    { label: t.navHome,    href: '#hero' },
-    { label: t.navRate,    href: '#hero' },
+    { label: t.navHome, href: '#hero' },
+    { label: t.navRate, href: '#hero' },
     { label: t.navPayment, href: '#payment-methods' },
-    { label: t.navFAQ,     href: '#faq' },
+    { label: t.navFAQ, href: '#faq' },
     { label: t.navContact, href: '#contact' },
+    { label: t.navMyOrders, href: '/my-orders' },
   ];
 
   const scrollTo = (href) => {
+    if (href.startsWith('/') && href.length > 1) {
+      navigate(href);
+      setMobileOpen(false);
+      return;
+    }
     const el = document.querySelector(href);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
@@ -52,15 +58,14 @@ export default function Header({ t, lang, toggleLang, links }) {
           {/* Desktop nav */}
           <div className="header-desktop-nav" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.1rem' }}>
             {navLinks.map((link) => (
-              <button key={link.label} onClick={() => scrollTo(link.href)} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'rgba(248,250,252,0.7)', fontSize: '0.88rem', fontWeight: 500,
-                padding: '0.4rem 0.75rem', borderRadius: '6px',
-                fontFamily: 'inherit', whiteSpace: 'nowrap', transition: 'all 0.2s',
-              }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-primary)'; e.currentTarget.style.background = 'rgba(0,229,255,0.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'rgba(248,250,252,0.7)'; e.currentTarget.style.background = 'none'; }}
-              >{link.label}</button>
+              <button
+                key={link.label}
+                type="button"
+                className="header-nav-link"
+                onClick={() => scrollTo(link.href)}
+              >
+                {link.label}
+              </button>
             ))}
           </div>
 
@@ -113,17 +118,16 @@ export default function Header({ t, lang, toggleLang, links }) {
               <ExchangePills links={links} />
             </div>
             {/* Nav links */}
-            {navLinks.map(link => (
-              <button key={link.label} onClick={() => scrollTo(link.href)} style={{
-                background: 'none', border: 'none', cursor: 'pointer', width: '100%',
-                color: 'rgba(248,250,252,0.85)', fontSize: '1rem', fontWeight: 500,
-                padding: '0.8rem 0.25rem', textAlign: isRtl ? 'right' : 'left',
-                fontFamily: 'inherit', borderBottom: '1px solid rgba(255,255,255,0.05)',
-                transition: 'color 0.2s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.color = 'var(--accent-primary)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,250,252,0.85)'}
-              >{link.label}</button>
+            {navLinks.map((link) => (
+              <button
+                key={link.label}
+                type="button"
+                className="header-nav-link header-nav-link--stack"
+                style={{ textAlign: isRtl ? 'right' : 'left' }}
+                onClick={() => scrollTo(link.href)}
+              >
+                {link.label}
+              </button>
             ))}
           </div>
         )}

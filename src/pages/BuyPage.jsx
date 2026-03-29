@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
+import { saveOrderLocal } from '../lib/savedOrders';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -32,6 +33,8 @@ export default function BuyPage() {
   const toggleLang = () => setLang((prev) => (prev === 'ar' ? 'en' : 'ar'));
 
   const usdtAmount = Number(state.usdtAmount || 0);
+  const KYC_THRESHOLD = Number(import.meta.env.VITE_KYC_THRESHOLD_USDT) || 1500;
+  const needsKyc = usdtAmount >= KYC_THRESHOLD;
 
   const [loading, setLoading] = useState(true);
   const [details, setDetails] = useState(null);
@@ -54,6 +57,7 @@ export default function BuyPage() {
   const [orderId, setOrderId] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [kycAcknowledged, setKycAcknowledged] = useState(false);
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -133,6 +137,10 @@ export default function BuyPage() {
       setError(isRtl ? 'يرجى إكمال الحقول المطلوبة (الحد الأدنى 5 USDT).' : 'Please complete required fields (minimum 5 USDT).');
       return;
     }
+    if (needsKyc && !kycAcknowledged) {
+      setError(t.kycAckRequired);
+      return;
+    }
     setSending(true);
     setError('');
     try {
@@ -164,12 +172,17 @@ export default function BuyPage() {
         paymentProofName: paymentProof?.name || '',
         paymentProofBase64,
         paymentProofMime,
+        kycAcknowledged: !needsKyc || kycAcknowledged,
       });
-      setOrderId(response?.orderId || createdOrderId);
+      const oid = response?.orderId || createdOrderId;
+      setOrderId(oid);
+      saveOrderLocal({ orderId: oid, usdtAmount });
       setSent(true);
     } catch (e) {
       if (e?.code === 'ORDER_RATE_LIMIT') {
         setError(isRtl ? e.message : (e.errorEn || e.message));
+      } else if (e?.code === 'KYC_ACK_REQUIRED') {
+        setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
       } else {
         setError(String(e?.message || e));
       }
@@ -213,6 +226,7 @@ export default function BuyPage() {
                     {t.trackOrderOpen}
                   </Link>
                 )}
+                <Link to="/my-orders" className="btn btn-outline">{t.navMyOrders}</Link>
                 <Link to="/" className="btn btn-outline">{t.navHome}</Link>
               </div>
             </div>
@@ -562,6 +576,39 @@ export default function BuyPage() {
                     </div>
                   )}
                 </div>
+                {needsKyc && (
+                  <div
+                    className="input-group buy-span-2"
+                    style={{
+                      marginTop: '0.25rem',
+                      padding: '1rem',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255, 180, 0, 0.35)',
+                      background: 'rgba(255, 180, 0, 0.06)',
+                    }}
+                  >
+                    <div className="text-accent text-sm mb-2" style={{ fontWeight: 700 }}>{t.kycBoxTitle}</div>
+                    <p className="text-muted text-sm mb-3" style={{ margin: 0, lineHeight: 1.6 }}>{t.kycBoxBody}</p>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.6rem',
+                        cursor: 'pointer',
+                        textAlign: isRtl ? 'right' : 'left',
+                        direction: isRtl ? 'rtl' : 'ltr',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={kycAcknowledged}
+                        onChange={(e) => setKycAcknowledged(e.target.checked)}
+                        style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                      />
+                      <span className="text-sm" style={{ lineHeight: 1.5 }}>{t.kycCheckboxLabel}</span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 

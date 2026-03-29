@@ -59,10 +59,10 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   return (
     <section id="hero" className="hero hero-section py-8 flex flex-col items-center justify-center text-center gap-6">
       <div className="hero-content" style={{ maxWidth: '800px' }}>
-        <h1 className="text-accent" style={{ marginBottom: '1rem', textShadow: '0 0 20px rgba(0,229,255,0.4)', lineHeight: 1.2 }}>
-          {heroTitle} <br/> <span style={{ color: '#fff' }}>USDT</span>
+        <h1 className="hero-title-vip">
+          {heroTitle} <br /> <span className="hero-usdt-mark">USDT</span>
         </h1>
-        <p className="text-muted" style={{ fontSize: '1.2rem', marginBottom: '2rem' }}>
+        <p className="hero-lead">
           {heroSubtitle}
         </p>
       </div>
@@ -145,7 +145,7 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
           {t.buyNow}
         </button>
         {usdtAmount < 5 && (
-          <p style={{ color: '#ff4d4d', fontSize: '0.85rem', marginTop: '0.75rem', fontWeight: 600 }}>
+          <p className="form-hint-warn" role="status">
             {t.minAmountError}
           </p>
         )}

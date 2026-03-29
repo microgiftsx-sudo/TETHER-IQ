@@ -715,6 +715,7 @@ app.post('/api/order', async (req, res) => {
       paymentProofName,
       paymentProofBase64,
       paymentProofMime,
+      kycAcknowledged: bodyKycAck,
     } = req.body || {};
 
     if (!name || !wallet || !walletNetwork || !usdtAmount || !iqdAmount || !paymentMethod) {
@@ -732,6 +733,16 @@ app.post('/api/order', async (req, res) => {
 
     if (!Number.isFinite(amountNum) || amountNum < 5) {
       return res.status(400).json({ error: 'Minimum amount is 5 USDT' });
+    }
+
+    const kycThreshold = Number(process.env.KYC_HIGH_VALUE_USDT || 1500);
+    const kycAcknowledged = Boolean(bodyKycAck);
+    if (Number.isFinite(kycThreshold) && kycThreshold > 0 && amountNum >= kycThreshold && !kycAcknowledged) {
+      return res.status(400).json({
+        error: 'يجب تأكيد الإقرار للمبالغ التي تصل أو تتجاوز حد التحقق.',
+        errorEn: 'Please confirm the verification notice for orders at or above the threshold.',
+        code: 'KYC_ACK_REQUIRED',
+      });
     }
     if (!ALLOWED_NETWORKS.has(normalizedNetwork)) {
       return res.status(400).json({ error: 'Unsupported network' });
@@ -772,10 +783,17 @@ app.post('/api/order', async (req, res) => {
       ? `<b>👤 بروفايل المنصة:</b> ${escapeTelegramHtml(activeProf.nameAr)} (${escapeTelegramHtml(activeProf.nameEn)})`
       : null;
 
+    const isHighValue =
+      Number.isFinite(kycThreshold) && kycThreshold > 0 && amountNum >= kycThreshold;
+    const highValueLine = isHighValue
+      ? `<b>⚠️ مبلغ مرتفع / High-value:</b> ${kycAcknowledged ? 'إقرار التحقق مُسجَّل / KYC ack ✓' : '—'}`
+      : null;
+
     const lines = [
       '🚀 <b>طلب جديد (New Order)</b> 🚀',
       '━━━━━━━━━━━━━━━',
       profileLine,
+      highValueLine,
       `<b>🧾 رقم الطلب:</b> ${escapeTelegramHtml(safeOrderId)}`,
       `<b>👤 الاسم:</b> ${escapeTelegramHtml(name)}`,
       `<b>💰 المبلغ:</b> ${escapeTelegramHtml(String(amountNum))} USDT`,
