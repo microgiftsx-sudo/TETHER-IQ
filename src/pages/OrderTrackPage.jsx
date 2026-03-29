@@ -1,9 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchOrderStatus } from '../api';
 import { translations } from '../translations';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+
+function formatTrackDate(iso, lang) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString(lang === 'ar' ? 'ar-IQ' : 'en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function badgeClass(status) {
+  switch (status) {
+    case 'completed':
+      return 'order-track-badge order-track-badge--completed';
+    case 'cancelled':
+      return 'order-track-badge order-track-badge--cancelled';
+    case 'archived':
+      return 'order-track-badge order-track-badge--archived';
+    default:
+      return 'order-track-badge order-track-badge--processing';
+  }
+}
 
 export default function OrderTrackPage() {
   const [params] = useSearchParams();
@@ -17,6 +44,12 @@ export default function OrderTrackPage() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [notifyPerm, setNotifyPerm] = useState(() =>
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+  );
+  const [deniedFlash, setDeniedFlash] = useState(false);
+
+  const prevStatusRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -49,16 +82,102 @@ export default function OrderTrackPage() {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    setNotifyPerm(Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    if (!data?.status || !data?.orderId) return;
+    const prev = prevStatusRef.current;
+    if (prev === null) {
+      prevStatusRef.current = data.status;
+      return;
+    }
+    if (prev === data.status) return;
+    prevStatusRef.current = data.status;
+
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (!['completed', 'cancelled', 'archived'].includes(data.status)) return;
+
+    const tid = data.orderId;
+    let title;
+    let body;
+    if (data.status === 'completed') {
+      title = t.trackNotifCompletedTitle;
+      body = `${t.trackNotifCompletedBody} (${tid})`;
+    } else if (data.status === 'cancelled') {
+      title = t.trackNotifCancelledTitle;
+      body = `${t.trackNotifCancelledBody} (${tid})`;
+    } else {
+      title = t.trackNotifArchivedTitle;
+      body = `${t.trackNotifArchivedBody} (${tid})`;
+    }
+    try {
+      const n = new Notification(title, {
+        body,
+        tag: `tether-order-${tid}-${data.status}`,
+      });
+      void n;
+    } catch {
+      /* ignore */
+    }
+  }, [data, t]);
+
   const statusLabel = (o) => (lang === 'ar' ? o.statusLabelAr : o.statusLabelEn);
+
+  const requestNotify = async () => {
+    if (typeof Notification === 'undefined') return;
+    try {
+      const p = await Notification.requestPermission();
+      setNotifyPerm(p);
+      if (p === 'denied') {
+        setDeniedFlash(true);
+        window.setTimeout(() => setDeniedFlash(false), 12000);
+      }
+    } catch {
+      setNotifyPerm('denied');
+      setDeniedFlash(true);
+      window.setTimeout(() => setDeniedFlash(false), 12000);
+    }
+  };
 
   return (
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
       <main className="buy-page-main">
-        <section className="container py-10" style={{ maxWidth: 640 }}>
-          <div className="glass-panel" style={{ padding: '1.75rem', border: '1px solid rgba(0,229,255,0.2)' }}>
-            <h1 className="text-accent mb-2" style={{ fontSize: '1.25rem' }}>{t.trackOrderTitle}</h1>
-            <p className="text-muted text-sm mb-6">{t.trackOrderSubtitle}</p>
+        <section className="container py-10">
+          <div className="order-track-card glass-panel" dir={isRtl ? 'rtl' : 'ltr'}>
+            <div className="order-track-top">
+              <div className="order-track-title-block">
+                <h1 className="order-track-title">{t.trackOrderTitle}</h1>
+                <p className="order-track-subtitle">{t.trackOrderSubtitle}</p>
+              </div>
+              {data && (
+                <div className={badgeClass(data.status)} role="status" aria-live="polite">
+                  {statusLabel(data)}
+                </div>
+              )}
+            </div>
+
+            {orderId && typeof Notification !== 'undefined' && notifyPerm === 'default' && (
+              <div className="order-track-notify">
+                <span style={{ flex: '1 1 200px' }}>{t.trackNotifyPrompt}</span>
+                <button type="button" className="btn btn-primary btn-sm" onClick={requestNotify}>
+                  {t.trackNotifyButton}
+                </button>
+              </div>
+            )}
+            {orderId && notifyPerm === 'granted' && (
+              <div className="order-track-notify" style={{ borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.08)' }}>
+                {t.trackNotifyActive}
+              </div>
+            )}
+            {orderId && deniedFlash && (
+              <div className="order-track-notify" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.08)' }}>
+                {t.trackNotifyDenied}
+              </div>
+            )}
 
             {!orderId && <p className="text-muted">{t.trackOrderMissing}</p>}
 
@@ -71,46 +190,44 @@ export default function OrderTrackPage() {
             )}
 
             {data && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <div
-                  style={{
-                    display: 'inline-block',
-                    alignSelf: isRtl ? 'flex-end' : 'flex-start',
-                    padding: '0.35rem 0.75rem',
-                    borderRadius: 999,
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    background:
-                      data.status === 'completed'
-                        ? 'rgba(34,197,94,0.2)'
-                        : data.status === 'cancelled'
-                          ? 'rgba(248,113,113,0.15)'
-                          : data.status === 'archived'
-                            ? 'rgba(148,163,184,0.2)'
-                            : 'rgba(0,229,255,0.15)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                  }}
-                >
-                  {statusLabel(data)}
+              <div className="order-track-details">
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackOrderId}</span>
+                  <span className="order-track-value-mono">{data.orderId}</span>
                 </div>
-                <div className="text-sm" style={{ lineHeight: 1.65 }}>
-                  <div><span className="text-muted">{t.trackOrderId}</span>{' '}
-                    <span className="text-accent" style={{ fontFamily: 'monospace' }}>{data.orderId}</span>
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackName}</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{data.name}</span>
+                </div>
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackUsdt}</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{data.usdtAmount} USDT</span>
+                </div>
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackIqd}</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{data.iqdAmount}</span>
+                </div>
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackPayment}</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{data.paymentMethod}</span>
+                </div>
+                <div className="order-track-row">
+                  <span className="text-muted">{t.trackNetwork}</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{data.network}</span>
+                </div>
+                {data.walletMasked ? (
+                  <div className="order-track-row">
+                    <span className="text-muted">{t.trackWallet}</span>
+                    <span className="order-track-value-mono">{data.walletMasked}</span>
                   </div>
-                  <div><span className="text-muted">{t.trackName}</span> {data.name}</div>
-                  <div><span className="text-muted">{t.trackUsdt}</span> {data.usdtAmount} USDT</div>
-                  <div><span className="text-muted">{t.trackIqd}</span> {data.iqdAmount}</div>
-                  <div><span className="text-muted">{t.trackPayment}</span> {data.paymentMethod}</div>
-                  <div><span className="text-muted">{t.trackNetwork}</span> {data.network}</div>
-                  {data.walletMasked ? (
-                    <div><span className="text-muted">{t.trackWallet}</span> {data.walletMasked}</div>
-                  ) : null}
-                  <div className="text-muted text-xs mt-2">{t.trackUpdated}: {data.updatedAt?.slice(0, 19)?.replace('T', ' ')}</div>
+                ) : null}
+                <div className="order-track-meta">
+                  {t.trackUpdated}: {formatTrackDate(data.updatedAt, lang)}
                 </div>
               </div>
             )}
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="order-track-actions">
               <Link to="/" className="btn btn-primary">{t.navHome}</Link>
               <Link to="/buy" className="btn btn-outline">{t.buyNow}</Link>
             </div>
