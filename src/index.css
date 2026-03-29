@@ -1749,6 +1749,131 @@ h3 { font-size: 1.25rem; }
   }
 }
 
+/* ─── مرحلة 4: صفحة من نحن + طلباتي المحفوظة ─── */
+.static-content-page {
+  max-width: 720px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.static-content-card {
+  border-radius: 22px !important;
+  border: 1px solid rgba(0, 229, 255, 0.2) !important;
+  /* مسافة أعلى/أسفل أوضح — يمنع التصاق النص والزر بحواف البطاقة */
+  padding: clamp(2rem, 5.5vw, 2.85rem) clamp(1.5rem, 4vw, 2.35rem) clamp(2.35rem, 5.5vw, 3.1rem) !important;
+  background: linear-gradient(155deg, rgba(22, 30, 48, 0.9), rgba(10, 16, 28, 0.84)) !important;
+}
+
+.static-content-card__title {
+  margin-top: 0;
+  margin-bottom: 1.15rem;
+  font-size: clamp(1.5rem, 4vw, 1.85rem);
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.static-content-card--about .about-section--brand h2 {
+  font-size: clamp(1.35rem, 3vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.static-content-card--about .about-section--brand p {
+  font-size: 1.02rem;
+  line-height: 1.8;
+}
+
+.static-content-card .legal-section h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgba(148, 163, 184, 0.95);
+  margin-bottom: 0.5rem;
+}
+
+.static-content-card .legal-section p {
+  line-height: 1.75;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.static-content-actions {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  padding-bottom: 0.15rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.my-orders-page__intro {
+  margin-bottom: 1.5rem;
+}
+
+.my-orders-page__title {
+  margin-top: 0;
+  font-size: clamp(1.45rem, 4vw, 1.85rem);
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.my-orders-empty-state {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 2rem 1.25rem;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px dashed rgba(0, 229, 255, 0.22);
+}
+
+.my-orders-empty-state__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 229, 255, 0.08);
+  color: var(--accent-primary);
+}
+
+.my-orders-empty-state p {
+  margin: 0;
+  max-width: 28rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.my-orders-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.my-orders-list__row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.my-orders-card.static-content-card {
+  padding: 1.65rem 1.5rem 1.85rem !important;
+}
+
+@media (max-width: 480px) {
+  .static-content-page {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
 .contact-section {
   width: 100%;
   padding-block: var(--space-4);
@@ -2059,6 +2184,11 @@ h3 { font-size: 1.25rem; }
 .mb-6 { margin-bottom: 1.5rem; }
 .mb-8 { margin-bottom: 2rem; }
 .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+/* مسافة رأسية لصفحات المحتوى (كان مفقوداً فكانت البطاقات تلتصق بالهيدر/التذييل) */
+.py-10 {
+  padding-top: clamp(1.85rem, 5.5vw, 3rem);
+  padding-bottom: clamp(2.25rem, 6.5vw, 4rem);
+}
 .py-16 { padding-top: 4rem; padding-bottom: 4rem; }
 .text-sm { font-size: 0.875rem; }
 .lh-16 { line-height: 1.6; }
@@ -2075,6 +2205,10 @@ h3 { font-size: 1.25rem; }
   h1 { font-size: 3.5rem; }
   h2 { font-size: 2.5rem; }
   .py-8 { padding-top: 4rem; padding-bottom: 4rem; }
+  .py-10 {
+    padding-top: clamp(2.5rem, 5vw, 3.5rem);
+    padding-bottom: clamp(3rem, 7vw, 4.75rem);
+  }
   .py-16 { padding-top: 6rem; padding-bottom: 6rem; }
 }
 
@@ -2092,6 +2226,10 @@ h3 { font-size: 1.25rem; }
 
   /* Sections vertical spacing */
   .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+  .py-10 {
+    padding-top: 1.75rem;
+    padding-bottom: 2.5rem;
+  }
 
   /* Glass panel tighter on mobile */
   .glass-panel { padding: 1rem; }

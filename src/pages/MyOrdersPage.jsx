@@ -17,6 +17,21 @@ function formatSavedAt(ts, lang) {
   });
 }
 
+function EmptyOrdersIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function MyOrdersPage() {
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
   const t = translations[lang];
@@ -49,31 +64,24 @@ export default function MyOrdersPage() {
   return (
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
-      <main id="main-content" className="container py-10" style={{ maxWidth: 640 }} tabIndex={-1}>
-        <div className="mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-          <h1 className="text-accent mb-2" style={{ marginTop: 0 }}>{t.myOrdersTitle}</h1>
-          <p className="text-muted text-sm" style={{ margin: 0 }}>{t.myOrdersSubtitle}</p>
+      <main id="main-content" className="container py-10 static-content-page" style={{ maxWidth: 680 }} tabIndex={-1}>
+        <div className="my-orders-page__intro" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+          <h1 className="my-orders-page__title">{t.myOrdersTitle}</h1>
+          <p className="text-muted text-sm" style={{ margin: '0.35rem 0 0' }}>{t.myOrdersSubtitle}</p>
         </div>
 
-        <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid rgba(0,229,255,0.2)' }}>
+        <div className="glass-panel static-content-card my-orders-card">
           {!orders.length ? (
-            <p className="text-muted" style={{ margin: 0, direction: isRtl ? 'rtl' : 'ltr' }}>{t.myOrdersEmpty}</p>
+            <div className="my-orders-empty-state" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <div className="my-orders-empty-state__icon" aria-hidden>
+                <EmptyOrdersIcon />
+              </div>
+              <p>{t.myOrdersEmpty}</p>
+            </div>
           ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {orders.map((o) => (
-                <li
-                  key={o.orderId}
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    padding: '0.85rem 0',
-                    borderBottom: '1px solid rgba(255,255,255,0.08)',
-                    direction: isRtl ? 'rtl' : 'ltr',
-                  }}
-                >
+                <li key={o.orderId} className="my-orders-list__row" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                   <div>
                     <div className="text-accent" style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
                       {o.orderId}
@@ -95,7 +103,7 @@ export default function MyOrdersPage() {
           )}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <Link to="/" className="btn btn-outline">{t.legalBackHome}</Link>
         </div>
       </main>

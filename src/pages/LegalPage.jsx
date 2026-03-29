@@ -17,6 +17,7 @@ export default function LegalPage({ doc }) {
   };
 
   const content = legalDocs[lang]?.[doc];
+  const isAbout = doc === 'about';
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -30,27 +31,27 @@ export default function LegalPage({ doc }) {
   return (
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
-      <main id="main-content" className="container py-10" style={{ maxWidth: 720 }} tabIndex={-1}>
+      <main id="main-content" className="container py-10 static-content-page" tabIndex={-1}>
         <article
-          className="glass-panel"
-          style={{
-            padding: '2rem',
-            border: '1px solid rgba(0,229,255,0.2)',
-            direction: isRtl ? 'rtl' : 'ltr',
-          }}
+          className={`glass-panel static-content-card${isAbout ? ' static-content-card--about' : ''}`}
+          style={{ direction: isRtl ? 'rtl' : 'ltr' }}
         >
-          <h1 className="text-accent mb-6" style={{ fontSize: '1.75rem', marginTop: 0 }}>
-            {content.title}
-          </h1>
+          <h1 className="static-content-card__title">{content.title}</h1>
           {content.sections.map((sec, i) => (
-            <section key={i} className="mb-5">
-              <h2 className="text-muted mb-2" style={{ fontSize: '1.05rem', fontWeight: 700 }}>
+            <section
+              key={i}
+              className={`legal-section mb-5${isAbout && i === 0 ? ' about-section--brand' : ''}`}
+            >
+              <h2
+                className={`mb-2${isAbout && i === 0 ? '' : ' text-muted'}`}
+                style={{ marginTop: i === 0 && isAbout ? '0.5rem' : 0 }}
+              >
                 {sec.h}
               </h2>
-              <p style={{ lineHeight: 1.75, color: 'var(--text-primary)', margin: 0 }}>{sec.p}</p>
+              <p>{sec.p}</p>
             </section>
           ))}
-          <div className="mt-8">
+          <div className="static-content-actions">
             <Link to="/" className="btn btn-outline">
               {t.legalBackHome}
             </Link>
