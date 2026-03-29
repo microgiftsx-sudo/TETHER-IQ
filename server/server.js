@@ -144,7 +144,14 @@ function maskChatIdForLog(id) {
   return `${s.slice(0, 3)}…${s.slice(-4)} (طول=${s.length})`;
 }
 
+function ordersUseSupportChatEnv() {
+  return ['1', 'true', 'yes'].includes(String(process.env.TELEGRAM_ORDERS_USE_SUPPORT || '').trim().toLowerCase());
+}
+
 function logTelegramChatEnvAtStartup() {
+  if (ordersUseSupportChatEnv()) {
+    console.log('[telegram] ORDERS → نفس مجموعة الدعم (TELEGRAM_ORDERS_USE_SUPPORT) إلى حين إصلاح مجموعة الطلبات');
+  }
   console.log('[telegram] ORDERS_CHAT_ID', maskChatIdForLog(telegramOrdersChatId()));
   console.log('[telegram] SUPPORT_CHAT_ID', maskChatIdForLog(telegramSupportChatId()));
   console.log('[telegram] SETTINGS_CHAT_ID', maskChatIdForLog(telegramSettingsChatId()));
@@ -162,7 +169,14 @@ function telegramSupportChatId() {
 
 /** طلبات الشراء والإثباتات */
 function telegramOrdersChatId() {
-  const raw = process.env.TELEGRAM_ORDERS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  if (ordersUseSupportChatEnv()) {
+    const s = telegramSupportChatId();
+    if (s) return s;
+  }
+  const raw = process.env.TELEGRAM_ORDERS_CHAT_ID
+    || process.env.TELEGRAM_ORDER_CHAT_ID
+    || process.env.TELEGRAM_CHAT_ID
+    || '';
   const v = String(raw).trim();
   return v ? normalizeTelegramChatId(v) : '';
 }
@@ -181,6 +195,7 @@ function hasExplicitSplitTelegramChatIds() {
     process.env.TELEGRAM_SUPPORT_CHAT_ID,
     process.env.TELEGRAM_WEBCHAT_CHAT_ID,
     process.env.TELEGRAM_ORDERS_CHAT_ID,
+    process.env.TELEGRAM_ORDER_CHAT_ID,
   ];
   return vals.some((v) => {
     const s = String(v || '').trim();
