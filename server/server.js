@@ -1045,6 +1045,7 @@ let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
 const pendingStates = new Map(); // chatId -> { action, path?, label?, method? }
+let lastAdminChatId = ''; // fallback routing for admin replies
 function getPendingState(chatId) { return pendingStates.get(String(chatId)) || null; }
 function setPendingState(chatId, state) {
   if (state) pendingStates.set(String(chatId), state);
@@ -1125,7 +1126,8 @@ async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const defaultChatId = telegramSettingsChatId();
-    const finalChatId = forceChatId || extra.chat_id || defaultChatId;
+    // Prefer explicit target, then "current admin conversation chat", then env default.
+    const finalChatId = forceChatId || extra.chat_id || lastAdminChatId || defaultChatId;
 
     if (!botToken || !finalChatId) return;
 
@@ -2494,6 +2496,9 @@ async function pollTelegram() {
       if (u.callback_query) {
         const cbq = u.callback_query;
         await answerCbq(cbq.id);
+        if (cbq.message?.chat?.id) {
+          lastAdminChatId = String(cbq.message.chat.id);
+        }
         const fromId = normalizeTelegramChatId(String(cbq.from?.id || ''));
         if (!adminIds.size && fromId) {
           adminIds.add(fromId);
@@ -2511,6 +2516,9 @@ async function pollTelegram() {
       if (!msg) continue;
       if ((msg.date || 0) < SERVER_START_TS) continue;
       maybeAutoConfigureFromMessage(msg);
+      if (msg.chat?.id) {
+        lastAdminChatId = String(msg.chat.id);
+      }
       if (!isAdminMessage(msg)) {
          
         console.log(`Bot: Non-admin message from ${msg.from?.id} (${msg.from?.username}) in chat ${msg.chat?.id}`);
