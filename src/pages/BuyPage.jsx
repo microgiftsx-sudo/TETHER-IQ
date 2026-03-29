@@ -126,15 +126,32 @@ export default function BuyPage() {
   useEffect(() => { setFibQrFailed(false); }, [pm?.fib?.qrImage]);
   useEffect(() => { setMastercardQrFailed(false); }, [pm?.mastercard?.qrImage]);
 
+  /** اقتراح شبكة من شكل العنوان (مشابه لمنصات مثل Binance) */
+  useEffect(() => {
+    const w = usdtWallet.trim();
+    if (w.startsWith('T') && w.length >= 2) {
+      setWalletNetwork('TRC20');
+    } else if (w.startsWith('0x') && w.length >= 4) {
+      setWalletNetwork((prev) => (prev === 'TRC20' ? 'ERC20' : prev));
+    }
+  }, [usdtWallet]);
+
   const normalizedWallet = usdtWallet.trim();
   const normalizedNetwork = walletNetwork.toUpperCase();
   const networkFeeUsd = NETWORK_TRANSFER_FEES_USD[normalizedNetwork] ?? NETWORK_TRANSFER_FEES_USD.TRC20;
+  const netUsdtReceive = useMemo(
+    () => Math.max(0, Number(usdtAmount) - networkFeeUsd),
+    [usdtAmount, networkFeeUsd],
+  );
+  const networkFeeBlocksOrder = usdtAmount > 0 && networkFeeUsd >= usdtAmount;
   const isEvmNetwork = normalizedNetwork === 'ERC20' || normalizedNetwork === 'BEP20';
   const walletValid = isEvmNetwork
     ? /^0x[a-fA-F0-9]{40}$/.test(normalizedWallet)
     : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(normalizedWallet);
   const senderValid = !senderNumber || /^07\d{9}$/.test(senderNumber.trim());
-  const canMoveToPayDetails = Boolean(paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid);
+  const canMoveToPayDetails = Boolean(
+    paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid && !networkFeeBlocksOrder,
+  );
   const createdOrderId = useMemo(() => `ORD-${Date.now().toString(36).toUpperCase()}`, []);
 
   const copyText = async (value, key) => {
@@ -291,15 +308,79 @@ export default function BuyPage() {
               </div>
             )}
 
-            <div className="buy-form-grid mb-2" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
-                <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.selectPayment}</label>
+            <div className="buy-flow" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+              <div className="buy-flow__section">
+                <label className="buy-flow__label">{t.buySectionWallet}</label>
+                <input
+                  className="input-control buy-flow__input"
+                  value={usdtWallet}
+                  onChange={(e) => setUsdtWallet(e.target.value)}
+                  placeholder={isRtl ? 'الصق عنوان USDT (TRC20 أو ERC20 أو BEP20)' : 'Paste USDT address (TRC20, ERC20, or BEP20)'}
+                  dir="ltr"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {normalizedWallet.startsWith('T') && (
+                  <p className="buy-flow__hint buy-flow__hint--ok">{t.buyNetworkHintTron}</p>
+                )}
+                {normalizedWallet.startsWith('0x') && (
+                  <p className="buy-flow__hint buy-flow__hint--ok">{t.buyNetworkHintEvm}</p>
+                )}
+                {normalizedWallet && !walletValid && (
+                  <div className="text-error text-sm mt-2">
+                    {isRtl
+                      ? (isEvmNetwork ? 'عنوان ERC20/BEP20 يجب أن يبدأ بـ 0x وطوله 42 حرفاً.' : 'عنوان TRC20 يجب أن يبدأ بـ T وبصيغة صحيحة.')
+                      : (isEvmNetwork ? 'ERC20/BEP20 address must be valid 0x + 40 hex chars.' : 'TRC20 address must start with T and be valid.')}
+                  </div>
+                )}
+              </div>
+
+              <div className="buy-flow__section">
+                <label className="buy-flow__label">{t.buySectionNetwork}</label>
                 <select
-                  className="input-control"
+                  className="input-control buy-flow__input"
+                  value={walletNetwork}
+                  onChange={(e) => setWalletNetwork(e.target.value)}
+                >
+                  <option value="TRC20">TRC20 (TRON) — ~{formatFeeUsd(NETWORK_TRANSFER_FEES_USD.TRC20, lang)} USDT</option>
+                  <option value="ERC20">ERC20 (Ethereum) — ~{formatFeeUsd(NETWORK_TRANSFER_FEES_USD.ERC20, lang)} USDT</option>
+                  <option value="BEP20">BEP20 (BNB Chain) — ~{formatFeeUsd(NETWORK_TRANSFER_FEES_USD.BEP20, lang)} USDT</option>
+                </select>
+              </div>
+
+              <div className="buy-summary-card">
+                <div className="buy-summary-card__title">{t.buySummaryTitle}</div>
+                <div className="buy-summary-card__rows">
+                  <div className="buy-summary-row">
+                    <span>{t.buySummaryOrderAmount}</span>
+                    <span dir="ltr" className="buy-summary-row__val">{formatFeeUsd(usdtAmount, lang)} USDT</span>
+                  </div>
+                  <div className="buy-summary-row buy-summary-row--deduct">
+                    <span>{t.buySummaryNetworkFee} ({normalizedNetwork})</span>
+                    <span dir="ltr" className="buy-summary-row__val">
+                      −{formatFeeUsd(networkFeeUsd, lang)} USDT
+                    </span>
+                  </div>
+                  <div className="buy-summary-row buy-summary-row--total">
+                    <span>{t.buySummaryYouReceive}</span>
+                    <span dir="ltr" className="buy-summary-row__receive">
+                      {formatFeeUsd(netUsdtReceive, lang)} USDT
+                    </span>
+                  </div>
+                </div>
+                <p className="buy-summary-card__note">{t.buySummaryFeeNote}</p>
+                {networkFeeBlocksOrder && (
+                  <p className="buy-summary-card__warn">{t.buyFeeWarnHigh}</p>
+                )}
+              </div>
+
+              <div className="buy-flow__section">
+                <label className="buy-flow__label">{t.buySectionPayment}</label>
+                <select
+                  className="input-control buy-flow__input"
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   disabled={!paymentMethodOptions.length}
-                  style={{ textAlign: isRtl ? 'right' : 'left', appearance: 'none', cursor: 'pointer' }}
                 >
                   {paymentMethodOptions.map((m) => (
                     <option key={m.key} value={m.label}>
@@ -308,80 +389,12 @@ export default function BuyPage() {
                   ))}
                 </select>
                 {!loading && !paymentMethodOptions.length && (
-                  <p className="text-error text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                  <p className="text-error text-sm mt-2">
                     {isRtl
-                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. يرجى التواصل مع الدعم أو تعديل الإعدادات من لوحة التحكم.'
-                      : 'No payment methods are enabled for the active profile. Please contact support.'}
+                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. يرجى التواصل مع الدعم.'
+                      : 'No payment methods enabled for the active profile. Contact support.'}
                   </p>
                 )}
-              </div>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
-                <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                  {isRtl ? 'عنوان محفظة USDT' : 'USDT Wallet Address'}
-                </label>
-                <input
-                  className="input-control"
-                  value={usdtWallet}
-                  onChange={(e) => setUsdtWallet(e.target.value)}
-                  placeholder={isRtl ? 'T... أو 0x...' : 'T... or 0x...'}
-                  dir="ltr"
-                  style={{ textAlign: 'left' }}
-                />
-                {normalizedWallet && !walletValid && (
-                  <div className="text-error text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl
-                      ? (isEvmNetwork ? 'عنوان ERC20/BEP20 يجب أن يبدأ بـ 0x وطوله 42 حرف.' : 'عنوان TRC20 يجب أن يبدأ بـ T وصحيح.')
-                      : (isEvmNetwork ? 'ERC20/BEP20 address must start with 0x and be 42 chars.' : 'TRC20 address must start with T and be valid.')}
-                  </div>
-                )}
-              </div>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
-                <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                  {isRtl ? 'شبكة التحويل' : 'Network'}
-                </label>
-                <select
-                  className="input-control"
-                  value={walletNetwork}
-                  onChange={(e) => setWalletNetwork(e.target.value)}
-                  style={{ textAlign: isRtl ? 'right' : 'left', appearance: 'none', cursor: 'pointer' }}
-                >
-                  <option value="TRC20">TRC20</option>
-                  <option value="ERC20">ERC20</option>
-                  <option value="BEP20">BEP20</option>
-                </select>
-              </div>
-
-              <div className="buy-span-2 buy-network-fees" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                <div className="buy-network-fees__head">
-                  <span className="buy-network-fees__title">{t.networkFeesTitle}</span>
-                </div>
-                <p className="buy-network-fees__intro">{t.networkFeesIntro}</p>
-                <div className="buy-network-fees__table" role="list">
-                  {(['TRC20', 'ERC20', 'BEP20']).map((net) => {
-                    const fee = NETWORK_TRANSFER_FEES_USD[net];
-                    const active = normalizedNetwork === net;
-                    return (
-                      <div
-                        key={net}
-                        role="listitem"
-                        className={`buy-network-fees__row${active ? ' buy-network-fees__row--active' : ''}`}
-                      >
-                        <span className="buy-network-fees__net">{net}</span>
-                        <span className="buy-network-fees__amt" dir="ltr">
-                          ~{formatFeeUsd(fee, lang)} USDT
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="buy-network-fees__selected">
-                  <span>{t.networkFeesSelected}</span>{' '}
-                  <strong className="text-accent" dir="ltr">
-                    {normalizedNetwork}
-                  </strong>
-                  {' — '}
-                  <span dir="ltr">~{formatFeeUsd(networkFeeUsd, lang)} USDT</span>
-                </div>
               </div>
             </div>
             <div className="text-muted text-sm mb-6" style={{ textAlign: isRtl ? 'right' : 'left' }}>
