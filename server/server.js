@@ -936,6 +936,19 @@ function isAdminMessage(msg) {
   return fromId && adminIds.has(String(fromId));
 }
 
+/** تحويل الأرقام العربية/الفارسية إلى أرقام غربية لـ Number() */
+function normalizeWesternDigits(str) {
+  let s = String(str ?? '');
+  const arabic = '٠١٢٣٤٥٦٧٨٩';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  const western = '0123456789';
+  for (let i = 0; i < 10; i += 1) {
+    s = s.split(arabic[i]).join(western[i]);
+    s = s.split(persian[i]).join(western[i]);
+  }
+  return s;
+}
+
 function helpText() {
   return [
     '🛠️ أوامر الإدارة - TETHER IQ',
@@ -1942,7 +1955,7 @@ async function handleAdminCommand(text, incomingChatId) {
     pendingState = null;
 
     if (st.action === 'rateFixed') {
-      const val = Number(raw);
+      const val = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
         await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -1958,7 +1971,8 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'rateFloat') {
-      const parts = raw.split(/\s+/);
+      const norm = normalizeWesternDigits(raw).replace(/[,\s\u066C]+/g, ' ').trim();
+      const parts = norm.split(/\s+/);
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
         await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
@@ -1977,7 +1991,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setTimer') {
-      const mins = Number(raw);
+      const mins = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
         await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -2036,7 +2050,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const cfg = await loadSiteConfig();
       setByPath(cfg, st.dotPath, raw);
       await saveSiteConfig(cfg);
-      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } });
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${raw.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } }, incomingChatId);
       return;
     }
 
@@ -2087,7 +2101,7 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     if (st.action === 'setStat') {
-      const val = Number(raw);
+      const val = Number(normalizeWesternDigits(raw).replace(/[,\s\u066C]/g, ''));
       if (!Number.isFinite(val) || val < 0) {
         await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
         pendingState = st;
@@ -2331,12 +2345,22 @@ async function tryHandleStaffChatReply(msg) {
     sessionId = parseSessionIdFromTelegramText(parentText);
   }
   if (!sessionId || !store.sessions[sessionId]) {
-    await botSend(
-      '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
-      {},
-      msg.chat.id
-    );
-    return true;
+    /*
+     * كان الكود يُرسل خطأً ويعيد true فيمنع handleAdminCommand.
+     * عند «الرد» على طلبات لوحة التحكم (إحصائيات، سعر، إلخ) لا توجد جلسة webchat —
+     * فيجب ترك الرسالة لتُعالَج كإدخال معلّق (pending).
+     */
+    const parentText = reply.text || reply.caption || '';
+    const looksLikeWebChatInbound = /رسالة من الموقع|💬.*موقع|sess_[a-z0-9_]+/i.test(parentText);
+    if (looksLikeWebChatInbound) {
+      await botSend(
+        '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
+        {},
+        msg.chat.id
+      );
+      return true;
+    }
+    return false;
   }
   appendStaffMessage(store, sessionId, text);
   await saveChatStore(CHAT_PATH, store);
