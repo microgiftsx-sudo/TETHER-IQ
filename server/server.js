@@ -144,37 +144,15 @@ function maskChatIdForLog(id) {
   return `${s.slice(0, 3)}…${s.slice(-4)} (طول=${s.length})`;
 }
 
-function ordersUseSupportChatEnv() {
-  return ['1', 'true', 'yes'].includes(String(process.env.TELEGRAM_ORDERS_USE_SUPPORT || '').trim().toLowerCase());
-}
-
 function logTelegramChatEnvAtStartup() {
-  if (ordersUseSupportChatEnv()) {
-    console.log('[telegram] ORDERS → نفس مجموعة الدعم (TELEGRAM_ORDERS_USE_SUPPORT) إلى حين إصلاح مجموعة الطلبات');
-  }
-  console.log('[telegram] ORDERS_CHAT_ID', maskChatIdForLog(telegramOrdersChatId()));
-  console.log('[telegram] SUPPORT_CHAT_ID', maskChatIdForLog(telegramSupportChatId()));
-  console.log('[telegram] SETTINGS_CHAT_ID', maskChatIdForLog(telegramSettingsChatId()));
+  console.log('[telegram] SUPPORT_CHAT_ID (دعم الموقع + إشعارات الطلبات)', maskChatIdForLog(telegramSupportChatId()));
+  console.log('[telegram] SETTINGS_CHAT_ID (البوت والإدارة)', maskChatIdForLog(telegramSettingsChatId()));
 }
 
-/** دعم الموقع (محادثة العملاء) — يفضّل مجموعة منفصلة عن الطلبات والإعدادات */
+/** دعم الموقع، دردشة الزوار، وإشعارات طلبات الشراء — مجموعة واحدة */
 function telegramSupportChatId() {
   const raw = process.env.TELEGRAM_SUPPORT_CHAT_ID
     || process.env.TELEGRAM_WEBCHAT_CHAT_ID
-    || process.env.TELEGRAM_CHAT_ID
-    || '';
-  const v = String(raw).trim();
-  return v ? normalizeTelegramChatId(v) : '';
-}
-
-/** طلبات الشراء والإثباتات */
-function telegramOrdersChatId() {
-  if (ordersUseSupportChatEnv()) {
-    const s = telegramSupportChatId();
-    if (s) return s;
-  }
-  const raw = process.env.TELEGRAM_ORDERS_CHAT_ID
-    || process.env.TELEGRAM_ORDER_CHAT_ID
     || process.env.TELEGRAM_CHAT_ID
     || '';
   const v = String(raw).trim();
@@ -194,8 +172,6 @@ function hasExplicitSplitTelegramChatIds() {
     process.env.TELEGRAM_SETTINGS_CHAT_ID,
     process.env.TELEGRAM_SUPPORT_CHAT_ID,
     process.env.TELEGRAM_WEBCHAT_CHAT_ID,
-    process.env.TELEGRAM_ORDERS_CHAT_ID,
-    process.env.TELEGRAM_ORDER_CHAT_ID,
   ];
   return vals.some((v) => {
     const s = String(v || '').trim();
@@ -402,14 +378,12 @@ app.get('/api/admin/telegram-probe', async (req, res) => {
         chatTitle: d?.ok ? title : null,
       };
     };
-    const [orders, support, settings] = await Promise.all([
-      probe('orders', telegramOrdersChatId),
+    const [support, settings] = await Promise.all([
       probe('support', telegramSupportChatId),
       probe('settings', telegramSettingsChatId),
     ]);
     res.json({
-      note: 'If orders.ok is false with chat not found: add this bot to the orders group and fix TELEGRAM_ORDERS_CHAT_ID on Railway.',
-      orders,
+      note: 'support = web chat + new purchase orders. settings = bot menus.',
       support,
       settings,
     });
@@ -720,10 +694,10 @@ app.get('/api/payment-details', async (_req, res) => {
 app.post('/api/order', async (req, res) => {
   try {
     const botToken = envRequired('TELEGRAM_BOT_TOKEN');
-    const chatId = telegramOrdersChatId();
+    const chatId = telegramSupportChatId();
     if (!chatId) {
       return res.status(503).json({
-        error: 'Missing Telegram orders chat: set TELEGRAM_ORDERS_CHAT_ID or TELEGRAM_CHAT_ID in .env',
+        error: 'Missing Telegram support chat: set TELEGRAM_SUPPORT_CHAT_ID or TELEGRAM_CHAT_ID in .env',
       });
     }
 
@@ -831,17 +805,15 @@ app.post('/api/order', async (req, res) => {
       let hint = null;
       if (lower.includes('chat not found') || lower.includes('peer_id_invalid')) {
         hint =
-          'تحقق: (1) TELEGRAM_ORDERS_CHAT_ID = معرّف مجموعة «الطلبات» يبدأ عادة بـ -100 '
-          + '(2) نفس البوت المذكور في TELEGRAM_BOT_TOKEN مضاف كعضو في تلك المجموعة '
-          + '(3) لا تخلط معرّف مجموعة الدعم/الإعدادات مع مجموعة الطلبات '
-          + '(4) جرّب في المتصفح: https://api.telegram.org/bot<TOKEN>/getChat?chat_id=<نفس_المعرّف>';
+          'تحقق: TELEGRAM_SUPPORT_CHAT_ID = مجموعة الدعم (نفسها تستقبل طلبات الشراء)، '
+          + 'والبوت عضو فيها، ثم: https://api.telegram.org/bot<TOKEN>/getChat?chat_id=<المعرّف>';
       }
       return res.status(502).json({
         error: 'Telegram send failed',
         telegramDescription: tgOrder?.description || null,
         telegramErrorCode: tgOrder?.error_code ?? null,
         hint,
-        context: 'telegram_orders',
+        context: 'telegram_support',
       });
     }
 
@@ -885,7 +857,7 @@ app.post('/api/order', async (req, res) => {
       const field = usePhoto ? 'photo' : 'document';
 
       const form = new FormData();
-      form.append('chat_id', String(chatId));
+      form.append('chat_id', String(telegramChatIdForApi(chatId)));
       form.append('caption', caption);
       form.append(field, buf, { filename, contentType: mime });
 
@@ -953,8 +925,7 @@ function helpText() {
     '',
     '📱 قنوات تيليجرام (.env):',
     'TELEGRAM_SETTINGS_CHAT_ID — أوامر البوت والقوائم (إن لم تُضبط يُستخدم TELEGRAM_CHAT_ID).',
-    'TELEGRAM_SUPPORT_CHAT_ID — مجموعة/قناة دردشة دعم الموقع (محادثة العملاء).',
-    'TELEGRAM_ORDERS_CHAT_ID — مجموعة إشعارات الطلبات الجديدة.',
+    'TELEGRAM_SUPPORT_CHAT_ID — دعم الموقع + دردشة الزوار + إشعارات طلبات الشراء.',
     '',
     '💬 محادثة الموقع (العملاء):',
     'عند وصول إشعار «رسالة من الموقع» — اضغط «رد» على ذلك الإشعار واكتب جوابك.',
