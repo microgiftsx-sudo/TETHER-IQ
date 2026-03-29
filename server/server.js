@@ -1033,10 +1033,13 @@ app.post('/api/order', async (req, res) => {
 });
 
 // --- Telegram bot polling for admin updates ---
-const adminIds = new Set(String(process.env.TELEGRAM_ADMIN_IDS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean));
+const adminIds = new Set(
+  String(process.env.TELEGRAM_ADMIN_IDS || '')
+    .split(',')
+    .map((s) => normalizeTelegramChatId(s))
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 let updateOffset = 0;
 let isPolling = false;
@@ -2436,14 +2439,9 @@ async function tryHandleStaffChatReply(msg) {
     const parentText = reply.text || reply.caption || '';
     sessionId = parseSessionIdFromTelegramText(parentText);
   }
-  if (!sessionId || !store.sessions[sessionId]) {
-    await botSend(
-      '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
-      {},
-      msg.chat.id
-    );
-    return true;
-  }
+  // Important: if this reply is NOT for a web-chat session, do not hijack admin flows.
+  // This lets admins reply naturally to bot prompts (e.g. "أرسل القيمة الجديدة...") without being blocked.
+  if (!sessionId || !store.sessions[sessionId]) return false;
   appendStaffMessage(store, sessionId, text);
   await saveChatStore(CHAT_PATH, store);
   await botSend('✅ وُصلت للعميل على الموقع', {}, msg.chat.id);
@@ -2496,7 +2494,11 @@ async function pollTelegram() {
       if (u.callback_query) {
         const cbq = u.callback_query;
         await answerCbq(cbq.id);
-        if (adminIds.has(String(cbq.from?.id))) {
+        const fromId = normalizeTelegramChatId(String(cbq.from?.id || ''));
+        if (!adminIds.size && fromId) {
+          adminIds.add(fromId);
+        }
+        if (adminIds.has(fromId)) {
           await handleCallbackQuery(cbq.data, cbq.message?.chat?.id);
         } else {
            
