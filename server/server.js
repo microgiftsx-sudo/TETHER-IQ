@@ -1997,21 +1997,8 @@ async function handleAdminCommand(text, incomingChatId) {
       return;
     }
 
-    const setValue = raw.startsWith('/set ') ? raw.slice(5).trim() : '';
-    if (!setValue) {
-      await botSend(
-        '❌ الإدخال المباشر معطّل.\n' +
-        'استخدم <code>/set ...</code> قبل أي قيمة.\n' +
-        'مثال: <code>/set 123</code>',
-        { reply_markup: cancelButton() },
-        incomingChatId,
-      );
-      setPendingState(incomingChatId, st);
-      return;
-    }
-
     setPendingState(incomingChatId, null);
-    const input = setValue;
+    const input = raw;
 
     if (st.action === 'rateFixed') {
       const val = Number(input);
