@@ -130,11 +130,6 @@ function normalizeTelegramChatId(raw) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
-  // أخطاء شائعة في Railway / لصق المتغيرات: =-100... أو chat_id=-100...
-  while (s.startsWith('=')) s = s.slice(1).trim();
-  if (/^chat_id\s*=/i.test(s)) {
-    s = s.replace(/^chat_id\s*=\s*/i, '').trim();
-  }
   return s;
 }
 
@@ -151,72 +146,28 @@ function maskChatIdForLog(id) {
 }
 
 function logTelegramChatEnvAtStartup() {
-  console.log('[telegram] SUPPORT_CHAT_ID (دعم الموقع + إشعارات الطلبات)', maskChatIdForLog(telegramSupportChatId()));
-  console.log('[telegram] SETTINGS_CHAT_ID (البوت والإدارة)', maskChatIdForLog(telegramSettingsChatId()));
+  console.log('[telegram] CHAT_ID (القناة الموحدة لكل الإشعارات والإدارة)', maskChatIdForLog(telegramSupportChatId()));
 }
 
-/** تحقق من صلاحية chat_id عبر getChat — يفسّر أخطاء «chat not found» في السجلات */
-async function probeTelegramChatsAtStartup() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
-  const checks = [
-    ['SETTINGS (أوامر البوت / CRM)', telegramSettingsChatId()],
-    ['SUPPORT (دعم + طلبات الشراء)', telegramSupportChatId()],
-  ];
-  for (const [label, rawId] of checks) {
-    if (!rawId || rawId === 'YOUR_CHAT_ID_HERE') continue;
-    const chatId = telegramChatIdForApi(rawId);
-    try {
-      const r = await fetch(
-        `https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(chatId)}`,
-        { signal: AbortSignal.timeout(8000) },
-      );
-      const j = await r.json();
-      if (!j?.ok) {
-        console.error(
-          `[telegram] ❌ ${label} معرف غير صالح أو البوت ليس في المحادثة (${chatId}): ${j?.description || 'unknown'}`,
-        );
-        console.error(
-          '[telegram]   → أضف البوت إلى المجموعة، أو صحّح TELEGRAM_SETTINGS_CHAT_ID / TELEGRAM_SUPPORT_CHAT_ID في Railway (بدون علامة = زائدة).',
-        );
-      } else {
-        const title = j.result?.title || j.result?.username || j.result?.first_name || 'ok';
-        console.log(`[telegram] ✅ ${label}: ${title}`);
-      }
-    } catch (e) {
-      console.error(`[telegram] فشل التحقق من ${label}:`, e?.message || e);
-    }
-  }
-}
-
-/** دعم الموقع، دردشة الزوار، وإشعارات طلبات الشراء — مجموعة واحدة */
+/** Chat ID موحّد: كل الرسائل والإدارة */
 function telegramSupportChatId() {
-  const raw = process.env.TELEGRAM_SUPPORT_CHAT_ID
+  const raw = process.env.TELEGRAM_CHAT_ID
+    || process.env.TELEGRAM_SUPPORT_CHAT_ID
+    || process.env.TELEGRAM_SETTINGS_CHAT_ID
     || process.env.TELEGRAM_WEBCHAT_CHAT_ID
-    || process.env.TELEGRAM_CHAT_ID
     || '';
   const v = String(raw).trim();
   return v ? normalizeTelegramChatId(v) : '';
 }
 
-/** أوامر البوت والقوائم وCRM — غالباً مجموعة الإدارة */
+/** لإبقاء التوافق: كل المسارات تستخدم نفس CHAT_ID */
 function telegramSettingsChatId() {
-  const raw = process.env.TELEGRAM_SETTINGS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
-  const v = String(raw).trim();
-  return v ? normalizeTelegramChatId(v) : '';
+  return telegramSupportChatId();
 }
 
 /** إن وُجد أي من معرفات التقسيم، لا نُحقن TELEGRAM_CHAT_ID تلقائياً من أول رسالة */
 function hasExplicitSplitTelegramChatIds() {
-  const vals = [
-    process.env.TELEGRAM_SETTINGS_CHAT_ID,
-    process.env.TELEGRAM_SUPPORT_CHAT_ID,
-    process.env.TELEGRAM_WEBCHAT_CHAT_ID,
-  ];
-  return vals.some((v) => {
-    const s = String(v || '').trim();
-    return s && s !== 'YOUR_CHAT_ID_HERE';
-  });
+  return false;
 }
 
 async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
@@ -443,14 +394,12 @@ app.get('/api/admin/telegram-probe', async (req, res) => {
         chatTitle: d?.ok ? title : null,
       };
     };
-    const [support, settings] = await Promise.all([
-      probe('support', telegramSupportChatId),
-      probe('settings', telegramSettingsChatId),
+    const [chatId] = await Promise.all([
+      probe('chat_id', telegramSupportChatId),
     ]);
     res.json({
-      note: 'support = web chat + new purchase orders. settings = bot menus.',
-      support,
-      settings,
+      note: 'Single unified Telegram Chat ID for everything.',
+      chatId,
     });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -750,30 +699,20 @@ function orderStatusLabelAr(status) {
  * تحميل صورة من رابط تيليغرام وحفظها محلياً في QR_DIR.
  * يُرجع اسم الملف المحلي (بدون مسار).
  */
-/**
- * يحمّل ملف QR من رابط file تيليغرام. الروابط تنتهي صلاحيتها → 404 شائع.
- * @returns {{ status: 'saved', filename: string } | { status: 'skip' } | { status: 'clear', reason: string }}
- */
 async function downloadQrToLocal(telegramUrl, profileId, methodKey) {
-  if (!telegramUrl || !telegramUrl.includes('api.telegram.org')) return { status: 'skip' };
+  if (!telegramUrl || !telegramUrl.includes('api.telegram.org')) return '';
   const ext = (telegramUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i) || [, 'jpg'])[1];
   const filename = `${profileId}_${methodKey}.${ext}`;
   const dest = path.join(QR_DIR, filename);
   try {
     const resp = await fetch(telegramUrl, { signal: AbortSignal.timeout(15000) });
-    if (resp.status === 404) {
-      console.warn(
-        `[QR download] ${methodKey}: HTTP 404 — رابط ملف تيليغرام منتهٍ أو محذوف. سيتم مسح الحقل من الإعدادات.`,
-      );
-      return { status: 'clear', reason: 'telegram_file_expired_or_missing' };
-    }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const buf = Buffer.from(await resp.arrayBuffer());
     await writeFile(dest, buf);
-    return { status: 'saved', filename };
+    return filename;
   } catch (e) {
     console.error(`[QR download] ${methodKey}:`, e?.message || e);
-    return { status: 'skip' };
+    return '';
   }
 }
 
@@ -788,12 +727,9 @@ async function migrateQrUrlsToLocal(details) {
     for (const key of METHOD_KEYS) {
       const m = profile.methods?.[key];
       if (!m?.qrImage || !m.qrImage.includes('api.telegram.org')) continue;
-      const result = await downloadQrToLocal(m.qrImage, profile.id, key);
-      if (result.status === 'saved' && result.filename) {
-        m.qrImage = `/api/qr/${result.filename}`;
-        changed = true;
-      } else if (result.status === 'clear') {
-        m.qrImage = '';
+      const localName = await downloadQrToLocal(m.qrImage, profile.id, key);
+      if (localName) {
+        m.qrImage = `/api/qr/${localName}`;
         changed = true;
       }
     }
@@ -831,7 +767,7 @@ app.post('/api/order', async (req, res) => {
     const chatId = telegramSupportChatId();
     if (!chatId) {
       return res.status(503).json({
-        error: 'Missing Telegram support chat: set TELEGRAM_SUPPORT_CHAT_ID or TELEGRAM_CHAT_ID in .env',
+        error: 'Missing Telegram chat: set TELEGRAM_CHAT_ID in .env',
       });
     }
 
@@ -957,7 +893,7 @@ app.post('/api/order', async (req, res) => {
       let hint = null;
       if (lower.includes('chat not found') || lower.includes('peer_id_invalid')) {
         hint =
-          'تحقق: TELEGRAM_SUPPORT_CHAT_ID = مجموعة الدعم (نفسها تستقبل طلبات الشراء)، '
+          'تحقق: TELEGRAM_CHAT_ID مضبوط بشكل صحيح، '
           + 'والبوت عضو فيها، ثم: https://api.telegram.org/bot<TOKEN>/getChat?chat_id=<المعرّف>';
       }
       return res.status(502).json({
@@ -965,7 +901,7 @@ app.post('/api/order', async (req, res) => {
         telegramDescription: tgOrder?.description || null,
         telegramErrorCode: tgOrder?.error_code ?? null,
         hint,
-        context: 'telegram_support',
+        context: 'telegram_chat_id',
       });
     }
 
@@ -1033,19 +969,15 @@ app.post('/api/order', async (req, res) => {
 });
 
 // --- Telegram bot polling for admin updates ---
-const adminIds = new Set(
-  String(process.env.TELEGRAM_ADMIN_IDS || '')
-    .split(',')
-    .map((s) => normalizeTelegramChatId(s))
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
+const adminIds = new Set(String(process.env.TELEGRAM_ADMIN_IDS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean));
 
 let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
 const pendingStates = new Map(); // chatId -> { action, path?, label?, method? }
-let lastAdminChatId = ''; // fallback routing for admin replies
 function getPendingState(chatId) { return pendingStates.get(String(chatId)) || null; }
 function setPendingState(chatId, state) {
   if (state) pendingStates.set(String(chatId), state);
@@ -1085,8 +1017,7 @@ function helpText() {
     'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
     '',
     '📱 قنوات تيليجرام (.env):',
-    'TELEGRAM_SETTINGS_CHAT_ID — أوامر البوت والقوائم (إن لم تُضبط يُستخدم TELEGRAM_CHAT_ID).',
-    'TELEGRAM_SUPPORT_CHAT_ID — دعم الموقع + دردشة الزوار + إشعارات طلبات الشراء.',
+    'TELEGRAM_CHAT_ID — المعرف الموحد لكل شيء (الإدارة + الطلبات + دردشة الموقع).',
     '',
     '💬 محادثة الموقع (العملاء):',
     'عند وصول إشعار «رسالة من الموقع» — اضغط «رد» على ذلك الإشعار واكتب جوابك.',
@@ -1126,8 +1057,7 @@ async function botSend(text, extra = {}, forceChatId = null) {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const defaultChatId = telegramSettingsChatId();
-    // Prefer explicit target, then "current admin conversation chat", then env default.
-    const finalChatId = forceChatId || extra.chat_id || lastAdminChatId || defaultChatId;
+    const finalChatId = forceChatId || extra.chat_id || defaultChatId;
 
     if (!botToken || !finalChatId) return;
 
@@ -1229,7 +1159,7 @@ function mainMenuKeyboard() {
       ],
       [
         { text: '⏱️ وقت الانتهاء', callback_data: 'menu_timer' },
-        { text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' },
+        { text: '🆔 Chat ID', callback_data: 'menu_chatid' },
       ],
       [
         { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
@@ -1246,6 +1176,15 @@ async function sendMainMenu(forceChatId = null) {
   await botSend(
     '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\nاختر من القائمة:',
     { reply_markup: mainMenuKeyboard() },
+    forceChatId
+  );
+}
+
+async function showChatIdMenu(forceChatId = null) {
+  const chatId = telegramSupportChatId();
+  await botSend(
+    `🆔 <b>Chat ID</b>\n━━━━━━━━━━━━━━━\n<b>القيمة الحالية:</b>\n<code>${chatId || 'غير مضبوط'}</code>\n\nهذا الـ Chat ID هو الموحد لكل شيء:\n• طلبات الشراء\n• دردشة الموقع\n• أوامر البوت`,
+    { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } },
     forceChatId
   );
 }
@@ -1816,8 +1755,13 @@ async function handleCallbackQuery(data, incomingChatId) {
     return;
   }
 
-  // ── Site settings ────────────────────────────────────
-  if (data === 'menu_site')         { await showSiteMenu(incomingChatId);         return; }
+  // ── Chat ID (single channel) ────────────────────────
+  if (data === 'menu_chatid')       { await showChatIdMenu(incomingChatId);       return; }
+  if (data === 'menu_site') {
+    await botSend('ℹ️ تم إلغاء قسم الإعدادات. استخدم قسم Chat ID فقط.', { reply_markup: { inline_keyboard: [[{ text: '🆔 Chat ID', callback_data: 'menu_chatid' }], [{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } }, incomingChatId);
+    return;
+  }
+  // ── Site settings (legacy callbacks; hidden from main menu) ─────────────
   if (data === 'site_faq')          { await showFaqMenu(incomingChatId);          return; }
   if (data === 'site_hero')         { await showHeroMenu(incomingChatId);         return; }
   if (data === 'site_links')        { await showLinksMenu(incomingChatId);        return; }
@@ -2441,9 +2385,14 @@ async function tryHandleStaffChatReply(msg) {
     const parentText = reply.text || reply.caption || '';
     sessionId = parseSessionIdFromTelegramText(parentText);
   }
-  // Important: if this reply is NOT for a web-chat session, do not hijack admin flows.
-  // This lets admins reply naturally to bot prompts (e.g. "أرسل القيمة الجديدة...") without being blocked.
-  if (!sessionId || !store.sessions[sessionId]) return false;
+  if (!sessionId || !store.sessions[sessionId]) {
+    await botSend(
+      '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
+      {},
+      msg.chat.id
+    );
+    return true;
+  }
   appendStaffMessage(store, sessionId, text);
   await saveChatStore(CHAT_PATH, store);
   await botSend('✅ وُصلت للعميل على الموقع', {}, msg.chat.id);
@@ -2496,14 +2445,7 @@ async function pollTelegram() {
       if (u.callback_query) {
         const cbq = u.callback_query;
         await answerCbq(cbq.id);
-        if (cbq.message?.chat?.id) {
-          lastAdminChatId = String(cbq.message.chat.id);
-        }
-        const fromId = normalizeTelegramChatId(String(cbq.from?.id || ''));
-        if (!adminIds.size && fromId) {
-          adminIds.add(fromId);
-        }
-        if (adminIds.has(fromId)) {
+        if (adminIds.has(String(cbq.from?.id))) {
           await handleCallbackQuery(cbq.data, cbq.message?.chat?.id);
         } else {
            
@@ -2516,9 +2458,6 @@ async function pollTelegram() {
       if (!msg) continue;
       if ((msg.date || 0) < SERVER_START_TS) continue;
       maybeAutoConfigureFromMessage(msg);
-      if (msg.chat?.id) {
-        lastAdminChatId = String(msg.chat.id);
-      }
       if (!isAdminMessage(msg)) {
          
         console.log(`Bot: Non-admin message from ${msg.from?.id} (${msg.from?.username}) in chat ${msg.chat?.id}`);
@@ -2582,12 +2521,11 @@ app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   logTelegramChatEnvAtStartup();
   initDataFiles()
-    .then(() => probeTelegramChatsAtStartup())
     .then(async () => {
       try {
         const d = await loadPaymentDetails();
         const migrated = await migrateQrUrlsToLocal(d);
-        if (migrated) console.log('[QR] Migrated Telegram URLs to local files (or cleared expired links)');
+        if (migrated) console.log('[QR] Migrated Telegram URLs to local files');
       } catch (e) {
         console.error('[QR migration]', e?.message || e);
       }

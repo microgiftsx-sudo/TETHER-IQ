@@ -295,8 +295,8 @@ export default function BuyPage() {
                 {!loading && !paymentMethodOptions.length && (
                   <p className="text-error text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                     {isRtl
-                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. يرجى التواصل مع الدعم أو تعديل الإعدادات من لوحة التحكم.'
-                      : 'No payment methods are enabled for the active profile. Please contact support.'}
+                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. تحقّق من Chat ID والبيانات في لوحة البوت.'
+                      : 'No payment methods are enabled for the active profile. Check Chat ID and payment data in the bot panel.'}
                   </p>
                 )}
               </div>
