@@ -194,6 +194,7 @@ export default function AdminCrmPage() {
                     <tr style={{ textAlign: 'left', color: '#94a3b8' }}>
                       <th style={{ padding: '0.35rem' }}>وقت</th>
                       <th style={{ padding: '0.35rem' }}>مسار</th>
+                      <th style={{ padding: '0.35rem' }}>موقع</th>
                       <th style={{ padding: '0.35rem' }}>جهاز</th>
                       <th style={{ padding: '0.35rem' }}>IP</th>
                     </tr>
@@ -203,8 +204,9 @@ export default function AdminCrmPage() {
                       <tr key={v.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         <td style={{ padding: '0.35rem', whiteSpace: 'nowrap' }}>{v.at?.slice(5, 16)}</td>
                         <td style={{ padding: '0.35rem' }}>{v.path}</td>
-                        <td style={{ padding: '0.35rem' }}>{v.device}</td>
-                        <td style={{ padding: '0.35rem' }}>{v.ip || '—'}</td>
+                        <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : '—'}</td>
+                        <td style={{ padding: '0.35rem', fontSize: '0.72rem', maxWidth: 140 }} title={v.ua}>{v.deviceLabel || v.device}</td>
+                        <td style={{ padding: '0.35rem', fontFamily: 'monospace', fontSize: '0.7rem' }}>{v.ip || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -225,6 +227,7 @@ export default function AdminCrmPage() {
                     <tr style={{ textAlign: 'left', color: '#94a3b8' }}>
                       <th style={{ padding: '0.35rem' }}>وقت</th>
                       <th style={{ padding: '0.35rem' }}>طلب</th>
+                      <th style={{ padding: '0.35rem' }}>حالة</th>
                       <th style={{ padding: '0.35rem' }}>اسم</th>
                       <th style={{ padding: '0.35rem' }}>USDT</th>
                     </tr>
@@ -233,7 +236,8 @@ export default function AdminCrmPage() {
                     {orders.map((o) => (
                       <tr key={o.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         <td style={{ padding: '0.35rem', whiteSpace: 'nowrap' }}>{o.at?.slice(5, 16)}</td>
-                        <td style={{ padding: '0.35rem' }}>{o.orderId}</td>
+                        <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{o.orderId}</td>
+                        <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{o.status === 'completed' ? 'تم الإكمال' : o.status === 'archived' ? 'مؤرشف' : o.status === 'cancelled' ? 'ملغى' : 'قيد المعالجة'}</td>
                         <td style={{ padding: '0.35rem' }}>{o.name}</td>
                         <td style={{ padding: '0.35rem' }}>{o.usdtAmount}</td>
                       </tr>

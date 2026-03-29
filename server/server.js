@@ -42,7 +42,24 @@ import {
   buildPrintableHtmlReport,
   computeVisitStats,
   computeOrderStats,
+  getClientIpFromRequest,
+  describeDeviceFromUa,
+  countRecentOrdersByVisitor,
+  findOrderByBusinessId,
+  updateOrderStatusByOrderId,
+  publicOrderTrackingPayload,
 } from './crmStore.js';
+import {
+  loadChatStore,
+  saveChatStore,
+  newSessionId,
+  ensureSession,
+  appendUserMessage,
+  appendStaffMessage,
+  bindTelegramMessage,
+  getMessagesAfter,
+  parseSessionIdFromTelegramText,
+} from './chatStore.js';
 
 const PAYMENT_METHOD_LABEL_TO_KEY = {
   'Zain Cash': 'zainCash',
@@ -80,9 +97,51 @@ const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
 const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
+const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
+
+const chatPostLimiter = new Map();
+
+function chatRateOk(req) {
+  const ip = String(req.ip || req.socket?.remoteAddress || 'anon').replace(/^::ffff:/, '');
+  const now = Date.now();
+  const last = chatPostLimiter.get(ip) || 0;
+  if (now - last < 850) return false;
+  chatPostLimiter.set(ip, now);
+  if (chatPostLimiter.size > 8000) {
+    for (const [k, t] of chatPostLimiter) {
+      if (now - t > 120000) chatPostLimiter.delete(k);
+    }
+  }
+  return true;
+}
+
+async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return null;
+  const nameLine = visitorName
+    ? `👤 <i>${escapeTelegramHtml(visitorName)}</i>`
+    : '👤 <i>زائر</i>';
+  const lines = [
+    '💬 <b>رسالة من الموقع</b>',
+    `🆔 <code>${escapeTelegramHtml(sessionId)}</code>`,
+    nameLine,
+    '━━━━━━━━━━━━━━━',
+    escapeTelegramHtml(userText),
+    '',
+    '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
+  ];
+  const { data } = await tgPostJson(botToken, 'sendMessage', {
+    chat_id: chatId,
+    text: lines.join('\n'),
+    parse_mode: 'HTML',
+  });
+  if (!data?.ok || !data?.result?.message_id) return null;
+  return data.result.message_id;
+}
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
@@ -119,6 +178,7 @@ async function initDataFiles() {
     { src: path.join(__dirname, 'data', 'testimonials.json'),    dest: TESTIMONIALS_PATH },
     { src: path.join(__dirname, 'data', 'visits.json'),          dest: VISITS_PATH },
     { src: path.join(__dirname, 'data', 'ordersLog.json'),       dest: ORDERS_CRM_PATH },
+    { src: path.join(__dirname, 'data', 'webChat.json'),           dest: CHAT_PATH },
   ];
   for (const { src, dest } of defaults) {
     try { await access(dest); } catch {
@@ -213,19 +273,74 @@ app.get('/api/testimonials', async (_req, res) => {
   catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
 });
 
-async function fetchGeoIp(ip) {
-  if (!ip || ip === '127.0.0.1' || ip === '::1') return { country: 'Local', city: '' };
+app.post('/api/chat/session', async (_req, res) => {
   try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city`, {
+    const store = await loadChatStore(CHAT_PATH);
+    const sessionId = newSessionId();
+    ensureSession(store, sessionId, '');
+    await saveChatStore(CHAT_PATH, store);
+    res.json({ sessionId });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/chat/messages', async (req, res) => {
+  try {
+    const sessionId = String(req.query.sessionId || '').trim();
+    const after = Number(req.query.after) || 0;
+    if (!sessionId.startsWith('sess_')) {
+      return res.status(400).json({ error: 'Invalid session' });
+    }
+    const store = await loadChatStore(CHAT_PATH);
+    const messages = getMessagesAfter(store, sessionId, after);
+    res.json({ messages });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post('/api/chat/message', async (req, res) => {
+  try {
+    if (!chatRateOk(req)) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    const body = req.body || {};
+    const sessionId = String(body.sessionId || '').trim();
+    const text = String(body.text || '').trim();
+    const visitorName = String(body.visitorName || '').trim().slice(0, 80);
+    if (!sessionId.startsWith('sess_') || text.length < 1 || text.length > 4000) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+    const store = await loadChatStore(CHAT_PATH);
+    if (!store.sessions[sessionId]) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    appendUserMessage(store, sessionId, text, visitorName);
+    const tgMsgId = await notifyWebChatToTelegram(sessionId, text, visitorName);
+    if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+    await saveChatStore(CHAT_PATH, store);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+async function fetchGeoIp(ip) {
+  if (!ip || ip === '127.0.0.1' || ip === '::1') return { country: 'Local', city: '', countryCode: '' };
+  try {
+    const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,city`, {
       signal: AbortSignal.timeout(3000),
     });
     const d = await res.json();
-    if (d.status === 'success') return { country: d.country, city: d.city };
+    if (d.status === 'success') {
+      return { country: d.country, city: d.city || '', countryCode: d.countryCode || '' };
+    }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('GeoIP fetch failed', e?.message || e);
   }
-  return { country: 'Unknown', city: '' };
+  return { country: 'Unknown', city: '', countryCode: '' };
 }
 
 app.post('/api/track-visit', async (req, res) => {
@@ -236,11 +351,49 @@ app.post('/api/track-visit', async (req, res) => {
     if (shouldSkipVisitDedupe(visitorId, pagePath)) {
       return res.json({ ok: true, skipped: true });
     }
-    const ip = req.ip || req.socket?.remoteAddress || '';
-    const location = await fetchGeoIp(ip.replace(/^::ffff:/, ''));
+    const clientIp = getClientIpFromRequest(req);
+    const location = await fetchGeoIp(clientIp);
     const rec = buildVisitRecord(body, req, location);
     await appendVisit(VISITS_PATH, rec);
     res.json({ ok: true, id: rec.id });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+const ORDER_RATE_WINDOW_MS = 15 * 60 * 1000;
+const ORDER_RATE_MAX = 3;
+const orderStatusPollLimiter = new Map();
+
+function orderStatusPollOk(ip) {
+  const key = String(ip || 'anon').replace(/^::ffff:/, '');
+  const now = Date.now();
+  const last = orderStatusPollLimiter.get(key) || 0;
+  if (now - last < 2000) return false;
+  orderStatusPollLimiter.set(key, now);
+  if (orderStatusPollLimiter.size > 20000) {
+    for (const [k, t] of orderStatusPollLimiter) {
+      if (now - t > 120000) orderStatusPollLimiter.delete(k);
+    }
+  }
+  return true;
+}
+
+app.get('/api/order-status', async (req, res) => {
+  try {
+    const orderId = String(req.query.orderId || '').trim();
+    if (!orderId) {
+      return res.status(400).json({ error: 'Missing orderId' });
+    }
+    if (!orderStatusPollOk(getClientIpFromRequest(req))) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const row = findOrderByBusinessId(all, orderId);
+    if (!row) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    res.json({ ok: true, order: publicOrderTrackingPayload(row) });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -370,6 +523,31 @@ async function computeRate(details) {
   return Number(cfg.fixedRate || 1320);
 }
 
+function orderInlineKeyboard(businessOrderId) {
+  const oid = String(businessOrderId || '').slice(0, 56);
+  const enc = (action) => `ord:${action}:${oid}`;
+  return {
+    inline_keyboard: [
+      [{ text: '✅ تم إكمال الطلب', callback_data: enc('done') }],
+      [
+        { text: '📁 أرشفة', callback_data: enc('arch') },
+        { text: '❌ إلغاء الطلب', callback_data: enc('canc') },
+      ],
+    ],
+  };
+}
+
+function orderStatusLabelAr(status) {
+  const s = String(status || 'received');
+  const map = {
+    received: 'قيد المعالجة',
+    completed: 'تم الإكمال',
+    archived: 'مؤرشف',
+    cancelled: 'ملغى',
+  };
+  return map[s] || s;
+}
+
 app.get('/api/payment-details', async (_req, res) => {
   try {
     const details = await loadPaymentDetails();
@@ -387,6 +565,7 @@ app.post('/api/order', async (req, res) => {
 
     const {
       orderId,
+      visitorId: bodyVisitorId,
       name,
       wallet,
       walletNetwork,
@@ -408,6 +587,10 @@ app.post('/api/order', async (req, res) => {
     const normalizedNetwork = String(walletNetwork || '').toUpperCase();
     const walletTrim = String(wallet || '').trim();
     const senderTrim = String(senderNumber || '').trim();
+    const clientIp = getClientIpFromRequest(req);
+    const visitorId = String(bodyVisitorId || '').trim() || `ip:${clientIp}`;
+    const ua = req.get('user-agent') || '';
+    const deviceLabel = describeDeviceFromUa(ua);
 
     if (!Number.isFinite(amountNum) || amountNum < 5) {
       return res.status(400).json({ error: 'Minimum amount is 5 USDT' });
@@ -434,6 +617,18 @@ app.post('/api/order', async (req, res) => {
     }
 
     const safeOrderId = String(orderId || `ORD-${Date.now().toString(36).toUpperCase()}`);
+
+    const existingOrders = await loadOrders(ORDERS_CRM_PATH);
+    if (countRecentOrdersByVisitor(existingOrders, visitorId, ORDER_RATE_WINDOW_MS) >= ORDER_RATE_MAX) {
+      return res.status(429).json({
+        error:
+          'تم تجاوز الحد المسموح: 3 طلبات كحد أقصى خلال 15 دقيقة لكل نفس الجهاز. انتظر قليلاً ثم أعد المحاولة.',
+        errorEn:
+          'Limit reached: maximum 3 orders per 15 minutes per device. Please wait and try again.',
+        code: 'ORDER_RATE_LIMIT',
+      });
+    }
+
     const activeProf = getActiveProfile(detailsFull);
     const profileLine = activeProf
       ? `<b>👤 بروفايل المنصة:</b> ${escapeTelegramHtml(activeProf.nameAr)} (${escapeTelegramHtml(activeProf.nameEn)})`
@@ -453,13 +648,16 @@ app.post('/api/order', async (req, res) => {
       `<b>🕸️ الشبكة:</b> ${escapeTelegramHtml(normalizedNetwork)}`,
       senderTrim ? `<b>📞 رقم المرسل:</b> ${escapeTelegramHtml(senderTrim)}` : null,
       paymentProofName ? `<b>📎 دليل الدفع:</b> ${escapeTelegramHtml(paymentProofName)}` : null,
+      `<b>📱 الجهاز:</b> ${escapeTelegramHtml(deviceLabel)}`,
       '━━━━━━━━━━━━━━━',
+      '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
     ].filter(Boolean);
 
     const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: chatId,
       text: lines.join('\n'),
       parse_mode: 'HTML',
+      reply_markup: orderInlineKeyboard(safeOrderId),
     });
 
     if (!tgOrder?.ok) {
@@ -467,6 +665,25 @@ app.post('/api/order', async (req, res) => {
         error: 'Telegram send failed',
         details: JSON.stringify(tgOrder || {}),
       });
+    }
+
+    try {
+      await appendOrderEvent(ORDERS_CRM_PATH, {
+        orderId: safeOrderId,
+        name,
+        usdtAmount: amountNum,
+        paymentMethod,
+        network: normalizedNetwork,
+        visitorId,
+        deviceLabel,
+        iqdAmount: String(iqdAmount),
+        wallet: walletTrim,
+        paymentDetail: String(paymentDetail || ''),
+        senderNumber: senderTrim,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[CRM] order log failed', err?.message || err);
     }
 
     // Send payment proof image/document if provided (multipart — reliable in Node)
@@ -505,19 +722,6 @@ app.post('/api/order', async (req, res) => {
         });
       }
       proofSent = true;
-    }
-
-    try {
-      await appendOrderEvent(ORDERS_CRM_PATH, {
-        orderId: safeOrderId,
-        name,
-        usdtAmount: amountNum,
-        paymentMethod,
-        network: normalizedNetwork,
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[CRM] order log failed', err?.message || err);
     }
 
     res.json({ ok: true, orderId: safeOrderId, proofSent });
@@ -568,6 +772,15 @@ function helpText() {
     '',
     '📈 CRM (زيارات وطلبات):',
     'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
+    '',
+    '💬 محادثة الموقع (العملاء):',
+    'عند وصول إشعار «رسالة من الموقع» — اضغط «رد» على ذلك الإشعار واكتب جوابك.',
+    'أو: /reply sess_xxx نص الرسالة',
+    '',
+    '🧾 الطلبات:',
+    '/order ORD-xxx — عرض تفاصيل طلب كاملة + أزرار الحالة',
+    'أو: /طلب ORD-xxx',
+    'عند طلب جديد: أزرار «تم الإكمال / أرشفة / إلغاء» تظهر للعميل في صفحة التتبع.',
     '',
     '✏️ تعديل البيانات:',
     '/set methods.fastPay.number 07...',
@@ -664,6 +877,7 @@ async function showCrmHome(forceChatId = null) {
     topSources,
     '',
     '🌐 <b>لوحة الويب:</b> <code>/admin/crm</code>',
+    '🔎 <b>بحث طلب:</b> <code>/order ORD-xxx</code>',
   ].join('\n');
 
   await botSend(text, {
@@ -943,6 +1157,27 @@ async function showStatsMenu(forceChatId = null) {
 }
 
 async function handleCallbackQuery(data, incomingChatId) {
+  // ── Order status (inline buttons on new orders) ─────
+  if (data.startsWith('ord:')) {
+    const m = String(data).match(/^ord:(done|arch|canc):(.+)$/);
+    if (m) {
+      const map = { done: 'completed', arch: 'archived', canc: 'cancelled' };
+      const status = map[m[1]];
+      const orderId = m[2];
+      const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, orderId, status);
+      if (r.ok) {
+        await botSend(
+          `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
+          {},
+          incomingChatId
+        );
+      } else {
+        await botSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {}, incomingChatId);
+      }
+      return;
+    }
+  }
+
   // ── Main navigation ─────────────────────────────────
   if (data === 'menu_main')  { pendingState = null; await sendMainMenu(incomingChatId); return; }
   if (data === 'cancel_input') { pendingState = null; await sendMainMenu(incomingChatId); return; }
@@ -1267,7 +1502,11 @@ async function handleCallbackQuery(data, incomingChatId) {
     const visits = await loadVisits(VISITS_PATH);
     const last = getRecentVisits(visits, 5);
     const body = last.length
-      ? last.map((v) => `• ${v.at}\n  ${v.path} · ${v.device} · ${v.ip || '-'} · ${v.lang || ''}`).join('\n\n')
+      ? last.map((v) => {
+        const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : '—';
+        const dev = v.deviceLabel || v.device || '—';
+        return `• ${v.at}\n  ${v.path}\n  ${loc} · ${dev}\n  ${v.ip || '-'} · ${v.lang || ''}`;
+      }).join('\n\n')
       : 'لا توجد زيارات بعد.';
     await botSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
     return;
@@ -1277,7 +1516,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     const orders = await loadOrders(ORDERS_CRM_PATH);
     const last = getRecentOrders(orders, 5);
     const body = last.length
-      ? last.map((o) => `• ${o.orderId}\n  ${o.name} · ${o.usdtAmount} USDT · ${o.paymentMethod}`).join('\n\n')
+      ? last.map((o) => `• ${o.orderId} — ${orderStatusLabelAr(o.status)}\n  ${o.name} · ${o.usdtAmount} USDT · ${o.paymentMethod}`).join('\n\n')
       : 'لا طلبات مسجّلة بعد.';
     await botSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
     return;
@@ -1636,6 +1875,61 @@ async function handleAdminCommand(text, incomingChatId) {
     // unknown pending state - fall through
   }
 
+  if (trimmed.startsWith('/reply ')) {
+    const rest = raw.slice(7).trim();
+    const sp = rest.indexOf(' ');
+    if (sp === -1) {
+      await botSend('❌ استخدم: <code>/reply sess_xxx نص الرسالة</code>', {}, incomingChatId);
+      return;
+    }
+    const sessionId = rest.slice(0, sp).trim();
+    const body = rest.slice(sp + 1).trim();
+    if (!sessionId.startsWith('sess_') || !body) {
+      await botSend('❌ جلسة أو نص غير صالح.', {}, incomingChatId);
+      return;
+    }
+    const store = await loadChatStore(CHAT_PATH);
+    if (!store.sessions[sessionId]) {
+      await botSend('❌ الجلسة غير موجودة.', {}, incomingChatId);
+      return;
+    }
+    appendStaffMessage(store, sessionId, body);
+    await saveChatStore(CHAT_PATH, store);
+    await botSend(`✅ وُصلت للعميل على الموقع\n<code>${escapeTelegramHtml(sessionId)}</code>`, {}, incomingChatId);
+    return;
+  }
+
+  if (trimmed.startsWith('/order ') || trimmed.startsWith('/طلب ')) {
+    const rest = trimmed.startsWith('/order ') ? raw.slice(7).trim() : raw.slice(5).trim();
+    if (!rest) {
+      await botSend('❌ استخدم: <code>/order ORD-XXXX</code> أو <code>/طلب ORD-XXXX</code>', {}, incomingChatId);
+      return;
+    }
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const o = findOrderByBusinessId(all, rest);
+    if (!o) {
+      await botSend(`❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(rest)}</code>`, {}, incomingChatId);
+      return;
+    }
+    const st = orderStatusLabelAr(o.status || 'received');
+    const lines = [
+      '🧾 <b>تفاصيل الطلب</b>',
+      `<b>رقم الطلب:</b> <code>${escapeTelegramHtml(o.orderId)}</code>`,
+      `<b>الحالة:</b> ${escapeTelegramHtml(st)}`,
+      `<b>الاسم:</b> ${escapeTelegramHtml(o.name)}`,
+      `<b>USDT:</b> ${escapeTelegramHtml(String(o.usdtAmount))}`,
+      `<b>IQD:</b> ${escapeTelegramHtml(String(o.iqdAmount || ''))}`,
+      `<b>الدفع:</b> ${escapeTelegramHtml(o.paymentMethod)}`,
+      `<b>الشبكة:</b> ${escapeTelegramHtml(o.network || '')}`,
+      o.wallet ? `<b>المحفظة:</b> <code>${escapeTelegramHtml(o.wallet)}</code>` : null,
+      `<b>الجهاز:</b> ${escapeTelegramHtml(o.deviceLabel || '—')}`,
+      `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
+      `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
+    ].filter(Boolean);
+    await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId) }, incomingChatId);
+    return;
+  }
+
   if (!trimmed.startsWith('/')) return;
 
   if (trimmed === '/help' || trimmed === '/start') {
@@ -1789,6 +2083,34 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profil
   }
 }
 
+async function tryHandleStaffChatReply(msg) {
+  const text = String(msg.text || '').trim();
+  if (!text) return false;
+  if (text.startsWith('/')) return false;
+  const reply = msg.reply_to_message;
+  if (!reply) return false;
+
+  const store = await loadChatStore(CHAT_PATH);
+  const replyId = reply.message_id;
+  let sessionId = store.telegramBindings[String(replyId)];
+  if (!sessionId) {
+    const parentText = reply.text || reply.caption || '';
+    sessionId = parseSessionIdFromTelegramText(parentText);
+  }
+  if (!sessionId || !store.sessions[sessionId]) {
+    await botSend(
+      '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
+      {},
+      msg.chat.id
+    );
+    return true;
+  }
+  appendStaffMessage(store, sessionId, text);
+  await saveChatStore(CHAT_PATH, store);
+  await botSend('✅ وُصلت للعميل على الموقع', {}, msg.chat.id);
+  return true;
+}
+
 async function handlePhotoMessage(msg) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return;
@@ -1855,7 +2177,8 @@ async function pollTelegram() {
       if (msg.photo) {
         await handlePhotoMessage(msg);
       } else if (msg.text) {
-        await handleAdminCommand(msg.text, msg.chat.id);
+        const routed = await tryHandleStaffChatReply(msg);
+        if (!routed) await handleAdminCommand(msg.text, msg.chat.id);
       }
     }
   } catch (e) {

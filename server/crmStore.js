@@ -12,12 +12,61 @@ const PRUNE_ORDERS = 8000;
 
 const visitDedupe = new Map(); // key -> lastMs
 
+/** Real client IP (Cloudflare / reverse proxy). Express req.ip needs trust proxy. */
+export function getClientIpFromRequest(req) {
+  if (!req || !req.headers) {
+    const raw = req?.ip || req?.socket?.remoteAddress || '';
+    return String(raw).replace(/^::ffff:/, '');
+  }
+  const cf = req.headers['cf-connecting-ip'];
+  if (cf && typeof cf === 'string') return cf.split(',')[0].trim();
+  const real = req.headers['x-real-ip'];
+  if (real && typeof real === 'string') return real.split(',')[0].trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (xff && typeof xff === 'string') return xff.split(',')[0].trim();
+  const raw = req.ip || req.socket?.remoteAddress || '';
+  return String(raw).replace(/^::ffff:/, '');
+}
+
 export function classifyDevice(userAgent) {
   const ua = String(userAgent || '').toLowerCase();
   if (!ua) return 'unknown';
   if (/tablet|ipad/.test(ua)) return 'tablet';
   if (/mobile|android|iphone|ipod/.test(ua)) return 'mobile';
   return 'desktop';
+}
+
+/** Human-readable device / OS (for CRM). */
+export function describeDeviceFromUa(ua) {
+  const s = String(ua || '');
+  if (!s.trim()) return 'unknown';
+  const low = s.toLowerCase();
+  const ios = s.match(/OS (\d+)[._](\d+)/);
+  const iosVer = ios ? `iOS ${ios[1]}.${ios[2]}` : '';
+  if (/iphone/.test(low)) return iosVer ? `iPhone · ${iosVer}` : 'iPhone';
+  if (/ipad/.test(low)) return iosVer ? `iPad · ${iosVer}` : 'iPad';
+  const and = s.match(/Android\s+([\d.]+)/i);
+  const andVer = and ? `Android ${and[1]}` : '';
+  if (/android/.test(low)) {
+    const sm = s.match(/;\s*(SM-[A-Z0-9]+)/i);
+    if (sm) return `Samsung ${sm[1]} · ${andVer || 'Android'}`;
+    const m = s.match(/;\s*([^;)]+?)\s*(?:Build|\))/i);
+    let model = m && m[1] ? m[1].trim() : '';
+    if (/linux|android|mobile|sdk/i.test(model)) model = '';
+    if (model && model.length > 2) return `${model.slice(0, 42)} · ${andVer || 'Android'}`;
+    return andVer || 'Android';
+  }
+  if (/windows nt/i.test(s)) {
+    const w = s.match(/Windows NT ([\d.]+)/i);
+    return w ? `Windows ${w[1]}` : 'Windows';
+  }
+  if (/mac os x/i.test(s)) {
+    const m = s.match(/Mac OS X ([\d_]+)/i);
+    return m ? `macOS ${m[1].replace(/_/g, '.')}` : 'macOS';
+  }
+  if (/linux/.test(low)) return 'Linux';
+  const c = classifyDevice(s);
+  return c !== 'unknown' ? c : 'unknown';
 }
 
 function newId(prefix) {
@@ -28,8 +77,8 @@ export function shouldSkipVisitDedupe(visitorId, pagePath) {
   const key = `${String(visitorId || 'anon').slice(0, 64)}|${String(pagePath || '/').slice(0, 120)}`;
   const now = Date.now();
   const prev = visitDedupe.get(key) || 0;
-  // Increase deduplication window to 15 minutes to filter repeated browsing
-  if (now - prev < 900000) return true;
+  // Short window: avoid double-fires (React strict mode) but keep repeat visits visible
+  if (now - prev < 45000) return true;
   visitDedupe.set(key, now);
   if (visitDedupe.size > 8000) {
     const cutoff = now - 120000;
@@ -53,10 +102,26 @@ export async function saveVisits(filePath, list) {
   await writeFile(filePath, JSON.stringify(list, null, 2), 'utf8');
 }
 
+function normalizeOrderRow(o) {
+  if (!o || typeof o !== 'object') return o;
+  return {
+    ...o,
+    status: o.status || 'received',
+    updatedAt: o.updatedAt || o.at || '',
+    deviceLabel: o.deviceLabel || '',
+    visitorId: o.visitorId || '',
+    wallet: o.wallet || '',
+    iqdAmount: o.iqdAmount || '',
+    paymentDetail: o.paymentDetail || '',
+    senderNumber: o.senderNumber || '',
+  };
+}
+
 export async function loadOrders(filePath) {
   try {
     const raw = JSON.parse(await readFile(filePath, 'utf8'));
-    return Array.isArray(raw) ? raw : [];
+    const list = Array.isArray(raw) ? raw : [];
+    return list.map(normalizeOrderRow);
   } catch {
     return [];
   }
@@ -90,7 +155,7 @@ export function buildVisitRecord(body, req, location = {}) {
   const referrer = String(body?.referrer || '').slice(0, 300);
   const visitorId = String(body?.visitorId || '').slice(0, 80);
   const uaHeader = req?.get?.('user-agent') || '';
-  const ip = req?.ip || req?.socket?.remoteAddress || '';
+  const ip = getClientIpFromRequest(req);
   return {
     id: newId('v'),
     at: new Date().toISOString(),
@@ -99,10 +164,12 @@ export function buildVisitRecord(body, req, location = {}) {
     referrer,
     visitorId: visitorId || 'anon',
     device: classifyDevice(uaHeader),
+    deviceLabel: describeDeviceFromUa(uaHeader).slice(0, 120),
     country: String(location.country || 'Unknown').slice(0, 80),
+    countryCode: String(location.countryCode || '').slice(0, 4),
     city: String(location.city || '').slice(0, 80),
     ua: String(uaHeader).slice(0, 220),
-    ip: String(ip).replace(/^::ffff:/, '').slice(0, 45),
+    ip: String(ip).slice(0, 45),
   };
 }
 
@@ -115,18 +182,112 @@ export async function appendVisit(visitsPath, record) {
 
 export async function appendOrderEvent(ordersPath, rec) {
   const list = await loadOrders(ordersPath);
-  const row = {
+  const now = new Date().toISOString();
+  const row = normalizeOrderRow({
     id: newId('o'),
-    at: new Date().toISOString(),
+    at: now,
+    updatedAt: now,
+    status: rec.status || 'received',
     orderId: String(rec.orderId || '').slice(0, 80),
     name: String(rec.name || '').slice(0, 100),
     usdtAmount: Number(rec.usdtAmount) || 0,
     paymentMethod: String(rec.paymentMethod || '').slice(0, 40),
     network: String(rec.network || '').slice(0, 20),
-  };
+    visitorId: String(rec.visitorId || '').slice(0, 80),
+    deviceLabel: String(rec.deviceLabel || '').slice(0, 120),
+    iqdAmount: String(rec.iqdAmount ?? '').slice(0, 40),
+    wallet: String(rec.wallet || '').slice(0, 120),
+    paymentDetail: String(rec.paymentDetail || '').slice(0, 200),
+    senderNumber: String(rec.senderNumber || '').slice(0, 20),
+  });
   list.push(row);
   await saveOrders(ordersPath, pruneOrders(list));
   return row;
+}
+
+export function countRecentOrdersByVisitor(orders, visitorId, windowMs) {
+  const vid = String(visitorId || '').trim();
+  if (!vid) return 0;
+  const cutoff = Date.now() - windowMs;
+  let n = 0;
+  for (const o of orders) {
+    const t = new Date(o.at).getTime();
+    if (Number.isNaN(t) || t < cutoff) continue;
+    if (String(o.visitorId || '') === vid) n += 1;
+  }
+  return n;
+}
+
+export function findOrderByBusinessId(orders, orderId) {
+  const q = String(orderId || '').trim();
+  if (!q) return null;
+  return orders.find((o) => String(o.orderId) === q) || null;
+}
+
+export async function updateOrderStatus(ordersPath, crmId, status) {
+  const list = await loadOrders(ordersPath);
+  const idx = list.findIndex((o) => o.id === crmId);
+  if (idx < 0) return { ok: false, error: 'not_found' };
+  const next = {
+    ...list[idx],
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = normalizeOrderRow(next);
+  await saveOrders(ordersPath, pruneOrders(list));
+  return { ok: true, order: list[idx] };
+}
+
+export async function updateOrderStatusByOrderId(ordersPath, orderId, status) {
+  const list = await loadOrders(ordersPath);
+  const q = String(orderId || '').trim();
+  const idx = list.findIndex((o) => String(o.orderId) === q);
+  if (idx < 0) return { ok: false, error: 'not_found' };
+  const next = {
+    ...list[idx],
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = normalizeOrderRow(next);
+  await saveOrders(ordersPath, pruneOrders(list));
+  return { ok: true, order: list[idx] };
+}
+
+export function maskWalletForPublic(wallet) {
+  const w = String(wallet || '').trim();
+  if (w.length <= 12) return w ? '***' : '';
+  return `${w.slice(0, 6)}…${w.slice(-4)}`;
+}
+
+export function publicOrderTrackingPayload(o) {
+  if (!o) return null;
+  const st = String(o.status || 'received');
+  const ar = {
+    received: 'قيد المعالجة',
+    completed: 'تم الإكمال',
+    archived: 'مؤرشف',
+    cancelled: 'ملغى',
+  };
+  const en = {
+    received: 'Processing',
+    completed: 'Completed',
+    archived: 'Archived',
+    cancelled: 'Cancelled',
+  };
+  return {
+    orderId: o.orderId,
+    status: st,
+    statusLabelAr: ar[st] || st,
+    statusLabelEn: en[st] || st,
+    name: o.name,
+    usdtAmount: o.usdtAmount,
+    iqdAmount: o.iqdAmount,
+    paymentMethod: o.paymentMethod,
+    network: o.network,
+    walletMasked: maskWalletForPublic(o.wallet),
+    at: o.at,
+    updatedAt: o.updatedAt || o.at,
+  };
 }
 
 export function sanitizeVisitPublic(v) {
@@ -243,7 +404,7 @@ export async function buildFullCrmSummary(visitsPath, ordersPath, marketingStats
 }
 
 export function visitsToCsv(rows) {
-  const header = ['id', 'at', 'path', 'lang', 'device', 'visitorId', 'referrer', 'ip', 'ua'];
+  const header = ['id', 'at', 'path', 'lang', 'device', 'deviceLabel', 'country', 'countryCode', 'city', 'visitorId', 'referrer', 'ip', 'ua'];
   const esc = (c) => `"${String(c ?? '').replace(/"/g, '""')}"`;
   const lines = [header.join(',')];
   for (const r of rows) {
@@ -253,7 +414,7 @@ export function visitsToCsv(rows) {
 }
 
 export function ordersToCsv(rows) {
-  const header = ['id', 'at', 'orderId', 'name', 'usdtAmount', 'paymentMethod', 'network'];
+  const header = ['id', 'at', 'updatedAt', 'status', 'orderId', 'name', 'usdtAmount', 'paymentMethod', 'network', 'visitorId', 'deviceLabel'];
   const esc = (c) => `"${String(c ?? '').replace(/"/g, '""')}"`;
   const lines = [header.join(',')];
   for (const r of rows) {
@@ -270,9 +431,10 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
 
   const vRows = visitSlice.map((v) => {
     const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : '—';
-    return `<tr><td>${esc(v.at)}</td><td class="path-col">${esc(v.path)}</td><td>${esc(loc)}</td><td>${esc(v.device)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`;
+    const dev = v.deviceLabel || v.device || '—';
+    return `<tr><td>${esc(v.at)}</td><td class="path-col">${esc(v.path)}</td><td>${esc(loc)}</td><td>${esc(dev)}</td><td>${esc(v.lang)}</td><td>${esc(v.ip)}</td></tr>`;
   }).join('');
-  const oRows = orderSlice.map((o) => `<tr><td>${esc(o.at)}</td><td>${esc(o.orderId)}</td><td>${esc(o.name)}</td><td>${esc(o.usdtAmount)}</td><td>${esc(o.paymentMethod)}</td></tr>`).join('');
+  const oRows = orderSlice.map((o) => `<tr><td>${esc(o.at)}</td><td>${esc(o.orderId)}</td><td>${esc(o.status || 'received')}</td><td>${esc(o.name)}</td><td>${esc(o.usdtAmount)}</td><td>${esc(o.paymentMethod)}</td></tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -312,7 +474,7 @@ export function buildPrintableHtmlReport(summary, visitSlice, orderSlice) {
   <h2>آخر الزيارات (حتى 200)</h2>
   <table><thead><tr><th>وقت</th><th>المسار</th><th>الموقع</th><th>الجهاز</th><th>اللغة</th><th>IP</th></tr></thead><tbody>${vRows || '<tr><td colspan="6">—</td></tr>'}</tbody></table>
   <h2>آخر الطلبات (حتى 200)</h2>
-  <table><thead><tr><th>وقت</th><th>رقم الطلب</th><th>الاسم</th><th>USDT</th><th>طريقة الدفع</th></tr></thead><tbody>${oRows || '<tr><td colspan="5">—</td></tr>'}</tbody></table>
+  <table><thead><tr><th>وقت</th><th>رقم الطلب</th><th>الحالة</th><th>الاسم</th><th>USDT</th><th>طريقة الدفع</th></tr></thead><tbody>${oRows || '<tr><td colspan="6">—</td></tr>'}</tbody></table>
   <p style="margin-top:24px;font-size:0.85rem;color:#666">للحفظ كـ PDF: استخدم الطباعة من المتصفح ← اختر «Save as PDF».</p>
 </body>
 </html>`;

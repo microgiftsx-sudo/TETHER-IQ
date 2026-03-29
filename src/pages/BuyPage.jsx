@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
+import { getOrCreateVisitorId } from '../visitTracking';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -148,6 +149,7 @@ export default function BuyPage() {
       }
       const response = await createOrder({
         orderId: createdOrderId,
+        visitorId: getOrCreateVisitorId(),
         name,
         wallet: normalizedWallet,
         walletNetwork: normalizedNetwork,
@@ -163,7 +165,11 @@ export default function BuyPage() {
       setOrderId(response?.orderId || createdOrderId);
       setSent(true);
     } catch (e) {
-      setError(String(e?.message || e));
+      if (e?.code === 'ORDER_RATE_LIMIT') {
+        setError(isRtl ? e.message : (e.errorEn || e.message));
+      } else {
+        setError(String(e?.message || e));
+      }
     } finally {
       setSending(false);
     }
@@ -188,7 +194,19 @@ export default function BuyPage() {
                   {isRtl ? 'رقم الطلب:' : 'Order ID:'} <span className="text-accent">{orderId}</span>
                 </p>
               )}
-              <Link to="/" className="btn btn-primary mt-8">{t.navHome}</Link>
+              {!!orderId && (
+                <p className="text-muted text-sm mt-3" style={{ maxWidth: 420, margin: '0 auto' }}>
+                  {t.trackOrderHint}
+                </p>
+              )}
+              <div className="mt-6" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
+                {!!orderId && (
+                  <Link to={`/track?order=${encodeURIComponent(orderId)}`} className="btn btn-primary">
+                    {t.trackOrderOpen}
+                  </Link>
+                )}
+                <Link to="/" className="btn btn-outline">{t.navHome}</Link>
+              </div>
             </div>
           </section>
         </main>

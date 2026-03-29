@@ -416,7 +416,8 @@ h3 { font-size: 1.25rem; }
 
   /* Telegram float: icon only — one horizontal edge only (inline sets L/R; both = full-width stretch) */
   .tg-float-label { display: none; }
-  .tg-float {
+  .tg-float,
+  .web-chat-float {
     padding: 0.75rem !important;
     border-radius: 50% !important;
     bottom: 1rem !important;
@@ -425,18 +426,25 @@ h3 { font-size: 1.25rem; }
     justify-content: center !important;
     flex-shrink: 0 !important;
   }
-  [dir="ltr"] .tg-float {
+  [dir="ltr"] .tg-float,
+  [dir="ltr"] .web-chat-float {
     left: auto !important;
     right: 1rem !important;
   }
-  [dir="rtl"] .tg-float {
+  [dir="rtl"] .tg-float,
+  [dir="rtl"] .web-chat-float {
     left: 1rem !important;
     right: auto !important;
   }
 
   /* Home: sticky CTA — keep Telegram above the bar */
-  html.has-sticky-mobile-cta .tg-float {
+  html.has-sticky-mobile-cta .tg-float,
+  html.has-sticky-mobile-cta .web-chat-float {
     bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  html.has-sticky-mobile-cta .web-chat-panel {
+    bottom: calc(5.5rem + 88px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Hero section spacing */
@@ -459,8 +467,13 @@ h3 { font-size: 1.25rem; }
 
 /* Narrow phones (e.g. 414×896): taller sticky bar on Home */
 @media (max-width: 430px) {
-  html.has-sticky-mobile-cta .tg-float {
+  html.has-sticky-mobile-cta .tg-float,
+  html.has-sticky-mobile-cta .web-chat-float {
     bottom: calc(138px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  html.has-sticky-mobile-cta .web-chat-panel {
+    bottom: calc(5.5rem + 138px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
 

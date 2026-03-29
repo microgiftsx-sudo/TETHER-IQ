@@ -9,6 +9,12 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:5174',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const xf = req.headers['x-forwarded-for'];
+            if (xf) proxyReq.setHeader('X-Forwarded-For', xf);
+          });
+        },
       },
     },
   },
