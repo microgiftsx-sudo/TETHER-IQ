@@ -162,25 +162,6 @@ export default function ChatWidget({ t, lang }) {
         aria-expanded={open}
         aria-label={isRtl ? 'فتح الدردشة' : 'Open chat'}
         onClick={() => (open ? setOpen(false) : void onOpen())}
-        style={{
-          position: 'fixed',
-          bottom: '1.5rem',
-          left: isRtl ? '1.5rem' : 'auto',
-          right: isRtl ? 'auto' : '1.5rem',
-          zIndex: 1001,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          background: 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 55%, #00E5FF 160%)',
-          color: '#fff',
-          border: '1px solid rgba(0,229,255,0.45)',
-          borderRadius: '50px',
-          padding: '0.65rem 1.1rem 0.65rem 0.85rem',
-          cursor: 'pointer',
-          fontWeight: 700,
-          fontSize: '0.88rem',
-          boxShadow: '0 6px 28px rgba(0, 229, 255, 0.35)',
-        }}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -189,75 +170,27 @@ export default function ChatWidget({ t, lang }) {
       </button>
 
       {open && (
-        <div
-          className="web-chat-panel glass-panel"
-          dir={isRtl ? 'rtl' : 'ltr'}
-          style={{
-            position: 'fixed',
-            bottom: '5.5rem',
-            left: isRtl ? '1rem' : 'auto',
-            right: isRtl ? 'auto' : '1rem',
-            width: 'min(400px, calc(100vw - 2rem))',
-            maxHeight: 'min(520px, calc(100vh - 7rem))',
-            zIndex: 1002,
-            display: 'flex',
-            flexDirection: 'column',
-            border: '1px solid var(--border-primary)',
-            borderRadius: 'var(--border-radius-lg)',
-            overflow: 'hidden',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
-          }}
-        >
-          <div
-            style={{
-              padding: '0.75rem 1rem',
-              background: 'linear-gradient(90deg, rgba(0,229,255,0.12), rgba(3,105,161,0.2))',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: '0.5rem',
-            }}
-          >
+        <div className="web-chat-panel glass-panel" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div className="web-chat-panel__head">
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, color: 'var(--accent-primary)', fontSize: '0.95rem' }}>{t.chatTitle}</div>
+              <div className="web-chat-panel__title">{t.chatTitle}</div>
               <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 2, lineHeight: 1.35 }}>{t.chatSubtitle}</div>
               <div className="text-muted" style={{ fontSize: '0.68rem', marginTop: 3, lineHeight: 1.35, opacity: 0.9 }}>{t.chatTicketHint}</div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+            <div className="web-chat-panel__actions">
               <button
                 type="button"
                 onClick={newTicket}
                 disabled={loading}
-                className="text-muted"
+                className="web-chat-panel__btn-secondary"
                 title={t.chatNewTicket}
-                style={{
-                  background: 'rgba(0,229,255,0.12)',
-                  border: '1px solid rgba(0,229,255,0.25)',
-                  color: 'var(--accent-primary)',
-                  cursor: loading ? 'wait' : 'pointer',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  padding: '0.35rem 0.5rem',
-                  borderRadius: '8px',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'nowrap',
-                }}
               >
                 {t.chatNewTicket}
               </button>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-muted"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '1.1rem',
-                  padding: '0.25rem',
-                  lineHeight: 1,
-                }}
+                className="web-chat-panel__btn-close"
                 aria-label={t.chatMinimize}
                 title={t.chatMinimize}
               >
@@ -267,7 +200,7 @@ export default function ChatWidget({ t, lang }) {
           </div>
 
           {!nameLocked ? (
-            <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="web-chat-panel__name-row">
               <input
                 type="text"
                 className="input-control"
@@ -278,39 +211,17 @@ export default function ChatWidget({ t, lang }) {
               />
             </div>
           ) : (
-            <div
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                fontSize: '0.82rem',
-                color: 'var(--text-secondary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
+            <div className="web-chat-panel__name-locked">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden style={{ flexShrink: 0, opacity: 0.85 }}>
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
               <span>{t.chatYourName}:</span>
-              <strong style={{ color: 'var(--accent-primary)' }}>{visitorName}</strong>
+              <strong className="text-accent">{visitorName}</strong>
             </div>
           )}
 
-          <div
-            ref={listRef}
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '0.75rem',
-              minHeight: 220,
-              maxHeight: 320,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-            }}
-          >
+          <div ref={listRef} className="web-chat-panel__messages">
             {messages.length === 0 && !error && (
               <p className="text-muted text-sm" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                 {t.chatWelcome}
@@ -319,21 +230,7 @@ export default function ChatWidget({ t, lang }) {
             {messages.map((m) => (
               <div
                 key={m.id}
-                style={{
-                  alignSelf: m.role === 'user'
-                    ? (isRtl ? 'flex-start' : 'flex-end')
-                    : (isRtl ? 'flex-end' : 'flex-start'),
-                  maxWidth: '88%',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '12px',
-                  fontSize: '0.88rem',
-                  lineHeight: 1.45,
-                  background: m.role === 'user' ? 'rgba(0,229,255,0.12)' : 'rgba(148,163,184,0.15)',
-                  border: `1px solid ${m.role === 'user' ? 'rgba(0,229,255,0.25)' : 'rgba(255,255,255,0.08)'}`,
-                  textAlign: isRtl ? 'right' : 'left',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
+                className={`web-chat-msg ${m.role === 'user' ? 'web-chat-msg--user' : 'web-chat-msg--staff'}`}
               >
                 {m.text}
               </div>
@@ -341,7 +238,7 @@ export default function ChatWidget({ t, lang }) {
             {error && <div className="text-error text-sm" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
           </div>
 
-          <form onSubmit={onSend} style={{ padding: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '0.5rem' }}>
+          <form onSubmit={onSend} className="web-chat-panel__form">
             <input
               className="input-control"
               placeholder={t.chatPlaceholder}

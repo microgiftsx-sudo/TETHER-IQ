@@ -31,32 +31,16 @@ export default function Header({ t, lang, toggleLang, links }) {
   };
 
   return (
-    <header style={{ position: 'sticky', top: 0, zIndex: 100 }}>
-
-      {/* ── Announcement Bar ── */}
-      <div className="header-announcement" style={{
-        borderBottom: '1px solid rgba(0,229,255,0.2)',
-        color: 'var(--accent-primary)', textAlign: 'center',
-        padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 700,
-      }}>
+    <header className="header-sticky">
+      <div className="header-announcement">
         {t.announcement}
       </div>
 
-      {/* ── Main Nav ── */}
-      <nav style={{
-        background: 'rgba(3,7,18,0.95)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(0,229,255,0.12)',
-      }}>
-        {/* ───── Top Row ───── */}
-        <div className="header-inner" style={{
-          maxWidth: '1200px', margin: '0 auto', padding: '0 1.25rem',
-          height: '60px', display: 'flex', alignItems: 'center', gap: '1rem',
-        }}>
+      <nav className="header-bar">
+        <div className="header-inner">
           <Logo navigate={navigate} />
 
-          {/* Desktop nav */}
-          <div className="header-desktop-nav" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.1rem' }}>
+          <div className="header-nav-links">
             {navLinks.map((link) => (
               <button
                 key={link.label}
@@ -69,35 +53,25 @@ export default function Header({ t, lang, toggleLang, links }) {
             ))}
           </div>
 
-          {/* Desktop actions */}
-          <div className="header-desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <div className="header-nav-actions">
             <ActionsGroup t={t} lang={lang} toggleLang={toggleLang} scrollTo={scrollTo} links={links} />
           </div>
 
-          {/* Mobile right side: lang + hamburger */}
-          <div className="header-mobile-actions" style={{ display: 'none', alignItems: 'center', gap: '0.5rem', marginInlineStart: 'auto' }}>
-            <button onClick={toggleLang} style={{
-              background: 'transparent', border: '1px solid rgba(0,229,255,0.35)',
-              color: 'var(--accent-primary)', borderRadius: '6px',
-              padding: '0.35rem 0.7rem', fontSize: '0.82rem', fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-            }}>{lang === 'ar' ? t.langEn : t.langAr}</button>
-
-            <button onClick={() => scrollTo('#checkout-form')} style={{
-              background: 'linear-gradient(135deg,var(--accent-primary),#0077FF)',
-              color: '#030712', fontWeight: 700, fontSize: '0.85rem',
-              padding: '0.4rem 0.9rem', borderRadius: '8px',
-              border: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-            }}>{t.buyNow}</button>
-
-            <button onClick={() => setMobileOpen(o => !o)} style={{
-              background: mobileOpen ? 'rgba(0,229,255,0.1)' : 'none',
-              border: '1px solid rgba(0,229,255,0.2)',
-              borderRadius: '8px', cursor: 'pointer',
-              color: 'var(--text-primary)', padding: '0.4rem',
-              display: 'flex', alignItems: 'center', transition: 'all 0.2s',
-            }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <div className="header-mobile-actions">
+            <button type="button" className="header-lang-btn" onClick={toggleLang}>
+              {lang === 'ar' ? t.langEn : t.langAr}
+            </button>
+            <button type="button" className="header-cta" onClick={() => scrollTo('#checkout-form')}>
+              {t.buyNow}
+            </button>
+            <button
+              type="button"
+              className={`header-icon-btn${mobileOpen ? ' header-icon-btn--open' : ''}`}
+              onClick={() => setMobileOpen((o) => !o)}
+              aria-expanded={mobileOpen}
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
                 {mobileOpen
                   ? <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
                   : <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>}
@@ -106,18 +80,11 @@ export default function Header({ t, lang, toggleLang, links }) {
           </div>
         </div>
 
-        {/* ── Mobile Dropdown Menu ── */}
         {mobileOpen && (
-          <div style={{
-            background: 'rgba(3,7,18,0.99)',
-            borderTop: '1px solid rgba(0,229,255,0.15)',
-            padding: '0.5rem 1.25rem 1rem',
-          }}>
-            {/* Same exchange pills as desktop (Binance + OKX + official icons) */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.25rem' }}>
+          <div className="header-mobile-sheet">
+            <div className="header-mobile-pills">
               <ExchangePills links={links} />
             </div>
-            {/* Nav links */}
             {navLinks.map((link) => (
               <button
                 key={link.label}
@@ -132,42 +99,27 @@ export default function Header({ t, lang, toggleLang, links }) {
           </div>
         )}
       </nav>
-
-      <style>{`
-        @media (max-width: 900px) {
-          .header-desktop-nav { display: none !important; }
-          .header-mobile-actions { display: flex !important; }
-        }
-      `}</style>
     </header>
   );
 }
 
-/* ── Logo sub-component ── */
 function Logo({ navigate }) {
   return (
     <button
+      type="button"
       onClick={() => navigate('/')}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.55rem',
-        flexShrink: 0, background: 'none', border: 'none',
-        cursor: 'pointer', padding: '0.2rem 0.3rem', borderRadius: '8px',
-        transition: 'opacity 0.2s',
-      }}
-      onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
-      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+      className="header-logo"
       aria-label="TETHER IQ - Home"
     >
       <img
         src="/logo.png"
         alt="TETHER IQ"
-        style={{ height: '52px', width: 'auto', display: 'block', flexShrink: 0 }}
+        style={{ height: '48px', width: 'auto', display: 'block', flexShrink: 0 }}
       />
     </button>
   );
 }
 
-/* ── Binance / OKX — same URLs, labels & icons on desktop + mobile ── */
 function ExchangePills({ links }) {
   const bnbHref = links?.bnb || 'https://www.binance.com';
   const okxHref = links?.okx || 'https://www.okx.com';
@@ -247,36 +199,16 @@ function ExchangePills({ links }) {
   );
 }
 
-/* ── Actions sub-component (pills + lang + CTA) ── */
 function ActionsGroup({ t, lang, toggleLang, scrollTo, links }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-
+    <>
       <ExchangePills links={links} />
-
-      {/* Lang Toggle */}
-      <button onClick={toggleLang} style={{
-        background: 'transparent', border: '1px solid rgba(0,229,255,0.35)',
-        color: 'var(--accent-primary)', borderRadius: '6px',
-        padding: '0.3rem 0.65rem', fontSize: '0.8rem', fontWeight: 600,
-        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', whiteSpace: 'nowrap',
-      }}
-        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,229,255,0.1)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >{lang === 'ar' ? t.langEn : t.langAr}</button>
-
-      {/* CTA */}
-      <button onClick={() => scrollTo('#checkout-form')} style={{
-        background: 'linear-gradient(135deg,var(--accent-primary),#0077FF)',
-        color: '#030712', fontWeight: 700, fontSize: '0.9rem',
-        padding: '0.45rem 1.1rem', borderRadius: '8px',
-        boxShadow: '0 0 14px rgba(0,229,255,0.35)',
-        border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-        transition: 'box-shadow 0.2s', whiteSpace: 'nowrap',
-      }}
-        onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 22px rgba(0,229,255,0.55)'}
-        onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 14px rgba(0,229,255,0.35)'}
-      >{t.buyNow}</button>
-    </div>
+      <button type="button" className="header-lang-btn" onClick={toggleLang}>
+        {lang === 'ar' ? t.langEn : t.langAr}
+      </button>
+      <button type="button" className="header-cta" onClick={() => scrollTo('#checkout-form')}>
+        {t.buyNow}
+      </button>
+    </>
   );
 }

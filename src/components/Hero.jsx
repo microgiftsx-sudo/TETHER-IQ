@@ -67,7 +67,11 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
         </p>
       </div>
 
-      <div id="checkout-form" className="calculator hero-calc glass-panel w-full" style={{ maxWidth: '500px', textAlign: isRtl ? 'right' : 'left', padding: '2rem' }}>
+      <div
+        id="checkout-form"
+        className="calculator hero-calc-panel glass-panel w-full"
+        style={{ textAlign: isRtl ? 'right' : 'left' }}
+      >
         <div className="flex justify-between items-center mb-4 text-sm" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
           <span className="text-muted">{t.rateLabel}</span>
           <span className="text-accent" style={{ fontWeight: 'bold' }}>1 USDT = {RATE.toLocaleString()} IQD</span>
@@ -132,13 +136,13 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
           </div>
         </div>
 
-        <button 
-          className="btn btn-primary w-full mt-6" 
-          style={{ 
-            padding: '1rem', fontSize: '1.2rem',
+        <button
+          type="button"
+          className="btn btn-primary w-full hero-primary-cta"
+          style={{
             opacity: usdtAmount < 5 ? 0.5 : 1,
-            cursor: usdtAmount < 5 ? 'not-allowed' : 'pointer'
-          }} 
+            cursor: usdtAmount < 5 ? 'not-allowed' : 'pointer',
+          }}
           onClick={goToBuy}
           disabled={usdtAmount < 5}
         >
