@@ -74,9 +74,10 @@ export function getSiteConfig() {
 }
 
 export async function getStats() {
+  const qs = `_=${Date.now()}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const raw = await jsonFetch('/api/stats');
+      const raw = await jsonFetch(`/api/stats?${qs}`);
       return normalizeStats(raw);
     } catch {
       await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));

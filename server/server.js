@@ -418,8 +418,14 @@ app.get('/api/site-config', async (_req, res) => {
 });
 
 app.get('/api/stats', async (_req, res) => {
-  try { res.json(await loadStats()); }
-  catch (e) { res.status(500).json({ error: String(e?.message || e) }); }
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.json(await loadStats());
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
 });
 
 app.get('/api/testimonials', async (_req, res) => {
@@ -2486,6 +2492,7 @@ app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   logTelegramChatEnvAtStartup();
   initDataFiles().then(() => drainPendingUpdates()).then(() => {
+    console.log('[data] stats.json path:', STATS_PATH, '(ضبط DATA_DIR على Railway ليطابق مجلد الـ Volume)');
     const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
     loopPoll();
      
