@@ -13,7 +13,7 @@ function parseTelegramResponse(text) {
   try {
     return JSON.parse(text);
   } catch {
-    // eslint-disable-next-line no-console
+     
     console.error('Telegram non-JSON response:', text?.slice(0, 1000));
     return { ok: false, description: text?.slice(0, 500) || 'invalid json' };
   }
@@ -81,7 +81,7 @@ export async function tgPostMultipart(botToken, method, form, options = {}) {
       const data = parseTelegramResponse(text);
 
       if (!res.ok) {
-        // eslint-disable-next-line no-console
+         
         console.error(`Telegram ${method} HTTP ${res.status}:`, text?.slice(0, 500));
       }
 

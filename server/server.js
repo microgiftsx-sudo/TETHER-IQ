@@ -135,6 +135,20 @@ function telegramSettingsChatId() {
   return String(process.env.TELEGRAM_SETTINGS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
 }
 
+/** إن وُجد أي من معرفات التقسيم، لا نُحقن TELEGRAM_CHAT_ID تلقائياً من أول رسالة */
+function hasExplicitSplitTelegramChatIds() {
+  const vals = [
+    process.env.TELEGRAM_SETTINGS_CHAT_ID,
+    process.env.TELEGRAM_SUPPORT_CHAT_ID,
+    process.env.TELEGRAM_WEBCHAT_CHAT_ID,
+    process.env.TELEGRAM_ORDERS_CHAT_ID,
+  ];
+  return vals.some((v) => {
+    const s = String(v || '').trim();
+    return s && s !== 'YOUR_CHAT_ID_HERE';
+  });
+}
+
 async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = telegramSupportChatId();
@@ -162,8 +176,20 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
 
 const app = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
-app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+const corsOrigins = String(process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+if (corsOrigins.length > 0) {
+  app.use(
+    cors({
+      origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+    }),
+  );
+} else {
+  app.use(cors());
+}
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '8mb' }));
 
 function adminCrmToken() {
   return String(process.env.ADMIN_CRM_TOKEN || '').trim();
@@ -191,18 +217,24 @@ function envRequired(name) {
 
 async function initDataFiles() {
   try { await mkdir(DATA_DIR, { recursive: true }); } catch { /* exists */ }
+  const defaultsDir = path.join(__dirname, 'defaults');
   const defaults = [
-    { src: path.join(__dirname, 'data', 'paymentDetails.json'),  dest: DATA_PATH },
-    { src: path.join(__dirname, 'data', 'siteConfig.json'),      dest: SITE_CONFIG_PATH },
-    { src: path.join(__dirname, 'data', 'stats.json'),           dest: STATS_PATH },
-    { src: path.join(__dirname, 'data', 'testimonials.json'),    dest: TESTIMONIALS_PATH },
-    { src: path.join(__dirname, 'data', 'visits.json'),          dest: VISITS_PATH },
-    { src: path.join(__dirname, 'data', 'ordersLog.json'),       dest: ORDERS_CRM_PATH },
-    { src: path.join(__dirname, 'data', 'webChat.json'),           dest: CHAT_PATH },
+    { name: 'paymentDetails.json', dest: DATA_PATH },
+    { name: 'siteConfig.json', dest: SITE_CONFIG_PATH },
+    { name: 'stats.json', dest: STATS_PATH },
+    { name: 'testimonials.json', dest: TESTIMONIALS_PATH },
+    { name: 'visits.json', dest: VISITS_PATH },
+    { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
+    { name: 'webChat.json', dest: CHAT_PATH },
   ];
-  for (const { src, dest } of defaults) {
-    try { await access(dest); } catch {
-      try { await writeFile(dest, await readFile(src, 'utf8'), 'utf8'); } catch { /* ignore */ }
+  for (const { name, dest } of defaults) {
+    try {
+      await access(dest);
+    } catch {
+      try {
+        const src = path.join(defaultsDir, name);
+        await writeFile(dest, await readFile(src, 'utf8'), 'utf8');
+      } catch { /* ignore */ }
     }
   }
 }
@@ -357,7 +389,7 @@ async function fetchGeoIp(ip) {
       return { country: d.country, city: d.city || '', countryCode: d.countryCode || '' };
     }
   } catch (e) {
-    // eslint-disable-next-line no-console
+     
     console.error('GeoIP fetch failed', e?.message || e);
   }
   return { country: 'Unknown', city: '', countryCode: '' };
@@ -531,15 +563,23 @@ async function computeRate(details) {
   return Number(cfg.fixedRate || 1320);
 }
 
+/** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc: + orderId (لا يتعارض مع قوائم أخرى). */
 function orderInlineKeyboard(businessOrderId) {
-  const oid = String(businessOrderId || '').slice(0, 56);
-  const enc = (action) => `ord:${action}:${oid}`;
+  const oidFull = String(businessOrderId || '').trim();
+  const enc = (actionLetter) => {
+    const prefix = `o${actionLetter}:`;
+    let oid = oidFull;
+    while (Buffer.byteLength(prefix + oid, 'utf8') > 64 && oid.length > 0) {
+      oid = oid.slice(0, -1);
+    }
+    return `${prefix}${oid}`;
+  };
   return {
     inline_keyboard: [
-      [{ text: '✅ تم إكمال الطلب', callback_data: enc('done') }],
+      [{ text: '✅ تم إكمال الطلب', callback_data: enc('d') }],
       [
-        { text: '📁 أرشفة', callback_data: enc('arch') },
-        { text: '❌ إلغاء الطلب', callback_data: enc('canc') },
+        { text: '📁 أرشفة', callback_data: enc('a') },
+        { text: '❌ إلغاء الطلب', callback_data: enc('c') },
       ],
     ],
   };
@@ -674,9 +714,12 @@ app.post('/api/order', async (req, res) => {
     });
 
     if (!tgOrder?.ok) {
+       
+      console.error('[order] Telegram sendMessage:', JSON.stringify(tgOrder || {}));
       return res.status(502).json({
         error: 'Telegram send failed',
-        details: JSON.stringify(tgOrder || {}),
+        telegramDescription: tgOrder?.description || null,
+        telegramErrorCode: tgOrder?.error_code ?? null,
       });
     }
 
@@ -695,7 +738,7 @@ app.post('/api/order', async (req, res) => {
         senderNumber: senderTrim,
       });
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error('[CRM] order log failed', err?.message || err);
     }
 
@@ -726,7 +769,7 @@ app.post('/api/order', async (req, res) => {
 
       const { data: proofTg } = await tgPostMultipart(botToken, method, form);
       if (!proofTg?.ok) {
-        // eslint-disable-next-line no-console
+         
         console.error('Telegram proof send failed:', JSON.stringify(proofTg));
         return res.status(502).json({
           error: 'Telegram could not receive payment proof',
@@ -842,11 +885,11 @@ async function botSend(text, extra = {}, forceChatId = null) {
     });
 
     if (!data?.ok) {
-      // eslint-disable-next-line no-console
+       
       console.error(`Bot: sendMessage failed for ${finalChatId}:`, JSON.stringify(data));
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('Bot: botSend exception:', err);
   }
 }
@@ -862,11 +905,11 @@ async function sendCrmDocument(chatId, filename, buffer, caption = '') {
     form.append('document', buffer, { filename, contentType: mime });
     const { data } = await tgPostMultipart(botToken, 'sendDocument', form);
     if (!data?.ok) {
-      // eslint-disable-next-line no-console
+       
       console.error('Bot: sendDocument failed:', JSON.stringify(data));
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('Bot: sendCrmDocument exception:', err);
   }
 }
@@ -942,10 +985,6 @@ function mainMenuKeyboard() {
       ],
     ],
   };
-}
-
-function backButton() {
-  return { inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]] };
 }
 
 async function sendMainMenu(forceChatId = null) {
@@ -1176,6 +1215,26 @@ async function showStatsMenu(forceChatId = null) {
 
 async function handleCallbackQuery(data, incomingChatId) {
   // ── Order status (inline buttons on new orders) ─────
+  const orderCb = String(data).match(/^o([dac]):(.+)$/);
+  if (orderCb) {
+    const map = { d: 'completed', a: 'archived', c: 'cancelled' };
+    const status = map[orderCb[1]];
+    const orderId = orderCb[2];
+    if (status) {
+      const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, orderId, status);
+      if (r.ok) {
+        await botSend(
+          `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
+          {},
+          incomingChatId
+        );
+      } else {
+        await botSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {}, incomingChatId);
+      }
+      return;
+    }
+  }
+
   if (data.startsWith('ord:')) {
     const m = String(data).match(/^ord:(done|arch|canc):(.+)$/);
     if (m) {
@@ -1703,10 +1762,13 @@ function maybeAutoConfigureFromMessage(msg) {
   const fromId = msg?.from?.id;
   if (!fromId) return;
 
-  if (!process.env.TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID === 'YOUR_CHAT_ID_HERE') {
+  if (
+    !hasExplicitSplitTelegramChatIds()
+    && (!process.env.TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID === 'YOUR_CHAT_ID_HERE')
+  ) {
     process.env.TELEGRAM_CHAT_ID = String(fromId);
     persistEnvKey('TELEGRAM_CHAT_ID', String(fromId)).catch(() => {});
-    // eslint-disable-next-line no-console
+     
     console.log(`Auto-config: TELEGRAM_CHAT_ID set to ${process.env.TELEGRAM_CHAT_ID} (saved to .env)`);
   }
 
@@ -1714,7 +1776,7 @@ function maybeAutoConfigureFromMessage(msg) {
     const id = String(fromId);
     adminIds.add(id);
     persistEnvKey('TELEGRAM_ADMIN_IDS', id).catch(() => {});
-    // eslint-disable-next-line no-console
+     
     console.log(`Auto-config: TELEGRAM_ADMIN_IDS set to ${id} (saved to .env)`);
   }
 }
@@ -1723,7 +1785,7 @@ async function handleAdminCommand(text, incomingChatId) {
   const raw = String(text || '').trim();
   const trimmed = raw.toLowerCase();
 
-  // eslint-disable-next-line no-console
+   
   console.log(`Bot Command Received: "${raw}" from Chat: ${incomingChatId}`);
 
   // ── Handle pending input state ──────────────────────
@@ -1950,8 +2012,13 @@ async function handleAdminCommand(text, incomingChatId) {
 
   if (!trimmed.startsWith('/')) return;
 
-  if (trimmed === '/help' || trimmed === '/start') {
+  if (trimmed === '/start') {
     await sendMainMenu(incomingChatId);
+    return;
+  }
+
+  if (trimmed === '/help') {
+    await botSend(`<pre>${escapeTelegramHtml(helpText())}</pre>`, {}, incomingChatId);
     return;
   }
 
@@ -2177,7 +2244,7 @@ async function pollTelegram() {
         if (adminIds.has(String(cbq.from?.id))) {
           await handleCallbackQuery(cbq.data, cbq.message?.chat?.id);
         } else {
-          // eslint-disable-next-line no-console
+           
           console.log(`Bot: Unauthorized callback attempt from ${cbq.from?.id} in chat ${cbq.message?.chat?.id}`);
         }
         continue;
@@ -2188,7 +2255,7 @@ async function pollTelegram() {
       if ((msg.date || 0) < SERVER_START_TS) continue;
       maybeAutoConfigureFromMessage(msg);
       if (!isAdminMessage(msg)) {
-        // eslint-disable-next-line no-console
+         
         console.log(`Bot: Non-admin message from ${msg.from?.id} (${msg.from?.username}) in chat ${msg.chat?.id}`);
         continue;
       }
@@ -2200,7 +2267,7 @@ async function pollTelegram() {
       }
     }
   } catch (e) {
-    // eslint-disable-next-line no-console
+     
     console.error('[Telegram poll]', e?.message || e);
   } finally {
     isPolling = false;
@@ -2228,7 +2295,7 @@ async function drainPendingUpdates() {
     }
     if (maxId > 0) {
       updateOffset = maxId + 1;
-      // eslint-disable-next-line no-console
+       
       console.log(`Telegram drain: skipped ${fetched} pending update(s), offset=${updateOffset}`);
     }
   } catch {
@@ -2244,12 +2311,12 @@ if (IS_PROD) {
 }
 
 app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
+   
   console.log(`API running on http://localhost:${PORT}`);
   initDataFiles().then(() => drainPendingUpdates()).then(() => {
     const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
     loopPoll();
-    // eslint-disable-next-line no-console
+     
     console.log('Telegram polling enabled. Send any message to the bot, then use /help.');
   });
 });

@@ -42,11 +42,12 @@ function badgeClass(status) {
   }
 }
 
-function InvoiceRow({ icon: Icon, label, children, mono }) {
+function InvoiceRow({ icon, label, children, mono }) {
+  const Cmp = icon;
   return (
     <div className="order-track-row">
       <span className="order-track-row-label">
-        <Icon className="order-track-icon" />
+        <Cmp className="order-track-icon" />
         {label}
       </span>
       <span className={mono ? 'order-track-value-mono order-track-row-value' : 'order-track-row-value'}>{children}</span>

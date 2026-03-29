@@ -1,0 +1,10 @@
+{
+  "paymentExpiryMinutes": 15,
+  "rateConfig": {
+    "mode": "fixed",
+    "fixedRate": 1320,
+    "floatBase": 1310,
+    "floatOffset": 0
+  },
+  "methods": {}
+}

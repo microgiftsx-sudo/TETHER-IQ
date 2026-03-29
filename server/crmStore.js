@@ -336,7 +336,6 @@ export function computeVisitStats(list) {
       visitsWeek += 1;
       if (v.visitorId) visitorsWeek.add(v.visitorId);
     }
-    const p = v.path || '/';
     const loc = v.country ? (v.city ? `${v.country}, ${v.city}` : v.country) : 'Unknown';
     const dev = v.device || 'unknown';
     const key = `${loc}|${dev}`; // Summarize by source (location + device)
