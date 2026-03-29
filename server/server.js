@@ -346,6 +346,63 @@ async function saveTestimonials(data) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+/**
+ * يتحقق من getChat بنفس TELEGRAM_BOT_TOKEN ومعرّفات المحادثات كما في الإنتاج.
+ * GET /api/admin/telegram-probe?token=ADMIN_CRM_TOKEN
+ * أو رأس X-Admin-Crm-Token — لا يعرض التوكن.
+ */
+app.get('/api/admin/telegram-probe', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).json({
+        error: adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN in .env',
+      });
+    }
+    const botToken = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    if (!botToken) {
+      return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN not set' });
+    }
+    const probe = async (label, getChatId) => {
+      const raw = getChatId();
+      if (!raw) {
+        return {
+          label,
+          configured: false,
+          ok: null,
+          hint: 'not set in env',
+        };
+      }
+      const cid = telegramChatIdForApi(raw);
+      const url = `https://api.telegram.org/bot${botToken}/getChat?chat_id=${encodeURIComponent(cid)}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const d = await r.json().catch(() => ({}));
+      const title = d?.result?.title || d?.result?.username || d?.result?.first_name || null;
+      return {
+        label,
+        configured: true,
+        chatIdHint: maskChatIdForLog(raw),
+        ok: Boolean(d?.ok),
+        telegramDescription: d?.description || null,
+        error_code: d?.error_code ?? null,
+        chatTitle: d?.ok ? title : null,
+      };
+    };
+    const [orders, support, settings] = await Promise.all([
+      probe('orders', telegramOrdersChatId),
+      probe('support', telegramSupportChatId),
+      probe('settings', telegramSettingsChatId),
+    ]);
+    res.json({
+      note: 'If orders.ok is false with chat not found: add this bot to the orders group and fix TELEGRAM_ORDERS_CHAT_ID on Railway.',
+      orders,
+      support,
+      settings,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 app.get('/api/site-config', async (_req, res) => {
   try {
     res.json(await loadSiteConfig());
