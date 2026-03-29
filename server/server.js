@@ -1998,7 +1998,13 @@ async function handleAdminCommand(text, incomingChatId) {
     }
 
     setPendingState(incomingChatId, null);
-    const input = raw;
+    // "/set" remains supported, but user can send plain value.
+    const input = raw.startsWith('/set ') ? raw.slice(5).trim() : raw;
+    if (!input) {
+      await botSend('❌ أرسل قيمة صحيحة.', { reply_markup: cancelButton() }, incomingChatId);
+      setPendingState(incomingChatId, st);
+      return;
+    }
 
     if (st.action === 'rateFixed') {
       const val = Number(input);
