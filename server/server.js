@@ -330,6 +330,19 @@ async function saveStats(data) {
   return next;
 }
 
+/** زيادة حقل من stats.json (للعرض في الموقع — TrustStats) */
+async function incrementStatField(field, delta = 1) {
+  const allowed = new Set(['customers', 'transactions', 'years', 'satisfaction']);
+  if (!allowed.has(field)) return null;
+  const d = Math.floor(Number(delta));
+  if (!Number.isFinite(d) || d === 0) return null;
+  const stats = await loadStats();
+  const cur = Math.floor(Number(stats[field]));
+  const base = Number.isFinite(cur) ? cur : 0;
+  stats[field] = Math.max(0, base + d);
+  return saveStats(stats);
+}
+
 async function loadTestimonials() {
   try { return JSON.parse(await readFile(TESTIMONIALS_PATH, 'utf8')); }
   catch { return []; }
@@ -853,6 +866,11 @@ app.post('/api/order', async (req, res) => {
         paymentDetail: String(paymentDetail || ''),
         senderNumber: senderTrim,
       });
+      try {
+        await incrementStatField('transactions', 1);
+      } catch (e) {
+        console.error('[stats] increment transactions failed', e?.message || e);
+      }
     } catch (err) {
        
       console.error('[CRM] order log failed', err?.message || err);
@@ -1322,7 +1340,7 @@ async function showTestimonialsMenu(forceChatId = null) {
 async function showStatsMenu(forceChatId = null) {
   const s = await loadStats();
   await botSend(
-    `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
+    `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b> <i>(+1 تلقائياً مع كل طلب جديد من الموقع)</i>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '👥 تعديل عدد العملاء', callback_data: 'stat_customers' }],
       [{ text: '✅ تعديل عدد العمليات', callback_data: 'stat_transactions' }],
