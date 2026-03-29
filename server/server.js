@@ -363,30 +363,12 @@ app.post('/api/track-visit', async (req, res) => {
 
 const ORDER_RATE_WINDOW_MS = 15 * 60 * 1000;
 const ORDER_RATE_MAX = 3;
-const orderStatusPollLimiter = new Map();
-
-function orderStatusPollOk(ip) {
-  const key = String(ip || 'anon').replace(/^::ffff:/, '');
-  const now = Date.now();
-  const last = orderStatusPollLimiter.get(key) || 0;
-  if (now - last < 2000) return false;
-  orderStatusPollLimiter.set(key, now);
-  if (orderStatusPollLimiter.size > 20000) {
-    for (const [k, t] of orderStatusPollLimiter) {
-      if (now - t > 120000) orderStatusPollLimiter.delete(k);
-    }
-  }
-  return true;
-}
 
 app.get('/api/order-status', async (req, res) => {
   try {
     const orderId = String(req.query.orderId || '').trim();
     if (!orderId) {
       return res.status(400).json({ error: 'Missing orderId' });
-    }
-    if (!orderStatusPollOk(getClientIpFromRequest(req))) {
-      return res.status(429).json({ error: 'Too many requests' });
     }
     const all = await loadOrders(ORDERS_CRM_PATH);
     const row = findOrderByBusinessId(all, orderId);
