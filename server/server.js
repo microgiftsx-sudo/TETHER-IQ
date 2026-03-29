@@ -129,6 +129,10 @@ function normalizeTelegramChatId(raw) {
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
+  /* خطأ شائع في .env: TELEGRAM_*_CHAT_ID==-1234567890 — dotenv يعطي قيمة تبدأ بـ = */
+  while (s.startsWith('=')) {
+    s = s.slice(1).trim();
+  }
   return s;
 }
 
@@ -996,8 +1000,14 @@ async function botSend(text, extra = {}, forceChatId = null) {
     });
 
     if (!data?.ok) {
-       
-      console.error(`Bot: sendMessage failed for ${finalChatId}:`, JSON.stringify(data));
+      const desc = String(data?.description || '');
+      console.error(`Bot: sendMessage failed for ${maskChatIdForLog(finalChatId)}:`, JSON.stringify(data));
+      if (desc.toLowerCase().includes('chat not found')) {
+        console.error(
+          '[telegram] chat not found: تحقق من TELEGRAM_SETTINGS_CHAT_ID / TELEGRAM_SUPPORT_CHAT_ID — '
+          + 'علامة = واحدة في .env (لا تستخدم ==)، والبوت عضو في المجموعة/القناة.',
+        );
+      }
     }
   } catch (err) {
      

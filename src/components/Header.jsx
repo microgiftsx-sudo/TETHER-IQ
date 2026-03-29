@@ -12,7 +12,6 @@ export default function Header({ t, lang, toggleLang, links }) {
     { label: t.navPayment, href: '#payment-methods' },
     { label: t.navFAQ, href: '#faq' },
     { label: t.navContact, href: '#contact' },
-    { label: t.navAbout, href: '/about' },
     { label: t.navMyOrders, href: '/my-orders' },
   ];
 
