@@ -199,6 +199,11 @@ export default function BuyPage() {
                   {t.trackOrderHint}
                 </p>
               )}
+              {!!orderId && (
+                <p className="text-muted text-sm mt-2" style={{ maxWidth: 440, margin: '0 auto' }}>
+                  {t.successInvoiceHow}
+                </p>
+              )}
               <div className="mt-6" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
                 {!!orderId && (
                   <Link to={`/track?order=${encodeURIComponent(orderId)}`} className="btn btn-primary">

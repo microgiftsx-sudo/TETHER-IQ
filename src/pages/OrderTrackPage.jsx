@@ -144,10 +144,21 @@ export default function OrderTrackPage() {
 
   return (
     <div className="page-shell">
-      <Header t={t} lang={lang} toggleLang={toggleLang} />
+      <div className="no-print">
+        <Header t={t} lang={lang} toggleLang={toggleLang} />
+      </div>
       <main className="buy-page-main">
         <section className="container py-10">
-          <div className="order-track-card glass-panel" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div
+            className="order-track-card glass-panel order-invoice-shell"
+            id="order-invoice"
+            dir={isRtl ? 'rtl' : 'ltr'}
+          >
+            {data && (
+              <p className="only-print invoice-print-doc-title">
+                {t.trackInvoicePrintTitle} — {data.orderId}
+              </p>
+            )}
             <div className="order-track-top">
               <div className="order-track-title-block">
                 <h1 className="order-track-title">{t.trackOrderTitle}</h1>
@@ -161,7 +172,7 @@ export default function OrderTrackPage() {
             </div>
 
             {orderId && typeof Notification !== 'undefined' && notifyPerm === 'default' && (
-              <div className="order-track-notify">
+              <div className="order-track-notify no-print">
                 <span style={{ flex: '1 1 200px' }}>{t.trackNotifyPrompt}</span>
                 <button type="button" className="btn btn-primary btn-sm" onClick={requestNotify}>
                   {t.trackNotifyButton}
@@ -169,12 +180,12 @@ export default function OrderTrackPage() {
               </div>
             )}
             {orderId && notifyPerm === 'granted' && (
-              <div className="order-track-notify" style={{ borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.08)' }}>
+              <div className="order-track-notify no-print" style={{ borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.08)' }}>
                 {t.trackNotifyActive}
               </div>
             )}
             {orderId && deniedFlash && (
-              <div className="order-track-notify" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.08)' }}>
+              <div className="order-track-notify no-print" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.08)' }}>
                 {t.trackNotifyDenied}
               </div>
             )}
@@ -227,14 +238,31 @@ export default function OrderTrackPage() {
               </div>
             )}
 
-            <div className="order-track-actions">
+            {data && (
+              <div className="no-print" style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => window.print()}
+                >
+                  {t.trackInvoicePrint}
+                </button>
+                <p className="text-muted text-xs mt-2" style={{ maxWidth: 360, margin: '0.5rem auto 0' }}>
+                  {t.trackInvoicePrintHint}
+                </p>
+              </div>
+            )}
+
+            <div className="order-track-actions no-print">
               <Link to="/" className="btn btn-primary">{t.navHome}</Link>
               <Link to="/buy" className="btn btn-outline">{t.buyNow}</Link>
             </div>
           </div>
         </section>
       </main>
-      <Footer t={t} lang={lang} />
+      <div className="no-print">
+        <Footer t={t} lang={lang} />
+      </div>
     </div>
   );
 }

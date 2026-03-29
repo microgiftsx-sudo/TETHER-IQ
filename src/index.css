@@ -357,6 +357,75 @@ footer.glass-panel {
   min-width: 140px;
 }
 
+.only-print {
+  display: none;
+}
+
+.invoice-print-doc-title {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .only-print {
+    display: block !important;
+  }
+
+  .web-chat-float,
+  .web-chat-panel,
+  .sticky-mobile-cta {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .page-shell {
+    background: #fff !important;
+    min-height: auto !important;
+  }
+
+  .order-invoice-shell {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .order-track-title {
+    color: #0369a1 !important;
+  }
+
+  .order-track-subtitle,
+  .text-muted {
+    color: #475569 !important;
+  }
+
+  .order-track-badge {
+    border: 1px solid #ccc !important;
+  }
+
+  .order-track-row {
+    border-bottom-color: #e2e8f0 !important;
+  }
+
+  .order-track-value-mono {
+    color: #0369a1 !important;
+  }
+}
+
 /* Typography Utilities */
 h1, h2, h3, h4 {
   font-weight: 700;

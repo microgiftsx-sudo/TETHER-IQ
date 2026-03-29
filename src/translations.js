@@ -93,6 +93,10 @@ export const translations = {
     trackNotifCancelledBody: "تم تحديث حالة طلبك إلى: ملغى.",
     trackNotifArchivedTitle: "تم أرشفة الطلب",
     trackNotifArchivedBody: "تم تحديث حالة طلبك إلى: مؤرشف.",
+    trackInvoicePrint: "حفظ أو طباعة PDF",
+    trackInvoicePrintHint: "يفتح نافذة الطباعة — اختر الطابعة «حفظ كـ PDF» أو «Microsoft Print to PDF».",
+    trackInvoicePrintTitle: "ملخص الطلب (فاتورة)",
+    successInvoiceHow: "لحفظ فاتورة PDF: من «تتبع الطلب» استخدم زر «حفظ أو طباعة PDF».",
   },
   en: {
     heroTitle: "Best Rate to Buy & Sell",
@@ -188,5 +192,9 @@ export const translations = {
     trackNotifCancelledBody: "Your order status was updated to: Cancelled.",
     trackNotifArchivedTitle: "Order archived",
     trackNotifArchivedBody: "Your order status was updated to: Archived.",
+    trackInvoicePrint: "Save or print PDF",
+    trackInvoicePrintHint: "Opens the print dialog — choose «Save as PDF» or «Microsoft Print to PDF».",
+    trackInvoicePrintTitle: "Order summary (invoice)",
+    successInvoiceHow: "To save a PDF invoice: open «Track order» and use «Save or print PDF».",
   }
 };
