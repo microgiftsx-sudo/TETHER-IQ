@@ -116,11 +116,16 @@ function chatRateOk(req) {
 }
 
 /**
- * تطبيع chat_id من .env: إزالة مسافات/اقتباس. يُبقى كنص — واجهة تيليغرام تقبل chat_id كنص أو رقم.
- * لا نحوّل إلى Number حتى لا يُفقد السالب أو يختلط مع معرّف مستخدم موجب.
+ * تطبيع chat_id من .env: مسافات، BOM، شرطة سالبة يونيكود، اقتباسات.
+ * يُبقى كنص — واجهة تيليغرام تقبل chat_id كنصاً.
  */
 function normalizeTelegramChatId(raw) {
-  let s = String(raw ?? '').trim();
+  let s = String(raw ?? '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D]/g, '')
+    .trim();
+  s = s.replace(/\u2212/g, '-');
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
@@ -129,7 +134,20 @@ function normalizeTelegramChatId(raw) {
 
 function telegramChatIdForApi(id) {
   if (id === '' || id == null) return '';
-  return String(id).trim();
+  return normalizeTelegramChatId(String(id));
+}
+
+function maskChatIdForLog(id) {
+  const s = String(id || '');
+  if (!s) return '(فارغ)';
+  if (s.length <= 8) return `(${s.length} chars)`;
+  return `${s.slice(0, 3)}…${s.slice(-4)} (طول=${s.length})`;
+}
+
+function logTelegramChatEnvAtStartup() {
+  console.log('[telegram] ORDERS_CHAT_ID', maskChatIdForLog(telegramOrdersChatId()));
+  console.log('[telegram] SUPPORT_CHAT_ID', maskChatIdForLog(telegramSupportChatId()));
+  console.log('[telegram] SETTINGS_CHAT_ID', maskChatIdForLog(telegramSettingsChatId()));
 }
 
 /** دعم الموقع (محادثة العملاء) — يفضّل مجموعة منفصلة عن الطلبات والإعدادات */
@@ -2343,8 +2361,8 @@ if (IS_PROD) {
 }
 
 app.listen(PORT, () => {
-   
   console.log(`API running on http://localhost:${PORT}`);
+  logTelegramChatEnvAtStartup();
   initDataFiles().then(() => drainPendingUpdates()).then(() => {
     const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
     loopPoll();
