@@ -4,9 +4,22 @@ import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
 import { saveOrderLocal } from '../lib/savedOrders';
-import { getNetworkTransferFeeUsd } from '../lib/networkFees';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+
+/** رسوم تحويل تقريبية على السلسلة (USDT) — للعرض فقط */
+const NETWORK_TRANSFER_FEES_USD = {
+  TRC20: 1,
+  ERC20: 0.5,
+  BEP20: 0.1,
+};
+
+function formatFeeUsd(n, lang) {
+  return n.toLocaleString(lang === 'ar' ? 'ar-IQ' : 'en-US', {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 1,
+    maximumFractionDigits: 2,
+  });
+}
 
 function useCountdown(targetMs) {
   const now = useSyncExternalStore(
@@ -46,10 +59,7 @@ export default function BuyPage() {
   const [stage, setStage] = useState(1);
   const [name, setName] = useState(state.name || '');
   const [usdtWallet, setUsdtWallet] = useState(state.wallet || '');
-  const allowedNet = (n) => ['TRC20', 'ERC20', 'BEP20'].includes(String(n || '').toUpperCase());
-  const [walletNetwork, setWalletNetwork] = useState(
-    allowedNet(state.walletNetwork) ? String(state.walletNetwork).toUpperCase() : 'TRC20',
-  );
+  const [walletNetwork, setWalletNetwork] = useState('TRC20');
   const [paymentDetail, setPaymentDetail] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
   const [paymentProof, setPaymentProof] = useState(null);
@@ -118,20 +128,13 @@ export default function BuyPage() {
 
   const normalizedWallet = usdtWallet.trim();
   const normalizedNetwork = walletNetwork.toUpperCase();
-  const networkFeeUsd = useMemo(() => getNetworkTransferFeeUsd(normalizedNetwork), [normalizedNetwork]);
-  const netUsdtApprox = useMemo(
-    () => Math.max(0, Number(usdtAmount) - networkFeeUsd),
-    [usdtAmount, networkFeeUsd],
-  );
-  const networkFeeWarn = usdtAmount > 0 && usdtAmount <= networkFeeUsd;
+  const networkFeeUsd = NETWORK_TRANSFER_FEES_USD[normalizedNetwork] ?? NETWORK_TRANSFER_FEES_USD.TRC20;
   const isEvmNetwork = normalizedNetwork === 'ERC20' || normalizedNetwork === 'BEP20';
   const walletValid = isEvmNetwork
     ? /^0x[a-fA-F0-9]{40}$/.test(normalizedWallet)
     : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(normalizedWallet);
   const senderValid = !senderNumber || /^07\d{9}$/.test(senderNumber.trim());
-  const canMoveToPayDetails = Boolean(
-    paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid && !networkFeeWarn,
-  );
+  const canMoveToPayDetails = Boolean(paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid);
   const createdOrderId = useMemo(() => `ORD-${Date.now().toString(36).toUpperCase()}`, []);
 
   const copyText = async (value, key) => {
@@ -145,12 +148,8 @@ export default function BuyPage() {
   };
 
   const onConfirm = async () => {
-    if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid || networkFeeWarn) {
-      setError(
-        networkFeeWarn
-          ? t.networkFeeTooHigh
-          : (isRtl ? 'يرجى إكمال الحقول المطلوبة (الحد الأدنى 5 USDT).' : 'Please complete required fields (minimum 5 USDT).'),
-      );
+    if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid) {
+      setError(isRtl ? 'يرجى إكمال الحقول المطلوبة (الحد الأدنى 5 USDT).' : 'Please complete required fields (minimum 5 USDT).');
       return;
     }
     if (needsKyc && !kycAcknowledged) {
@@ -338,7 +337,7 @@ export default function BuyPage() {
               </div>
               <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                  {t.networkSelectLabel}
+                  {isRtl ? 'شبكة التحويل' : 'Network'}
                 </label>
                 <select
                   className="input-control"
@@ -351,50 +350,40 @@ export default function BuyPage() {
                   <option value="BEP20">BEP20</option>
                 </select>
               </div>
-            </div>
 
-            <div
-              className="buy-network-fee-box mb-4"
-              style={{
-                direction: isRtl ? 'rtl' : 'ltr',
-                background: 'rgba(0,229,255,0.06)',
-                border: '1px solid rgba(0,229,255,0.18)',
-                borderRadius: '14px',
-                padding: '1rem 1.15rem',
-              }}
-            >
-              <div className="text-accent" style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.35rem' }}>
-                {t.networkTransferFeeTitle}
+              <div className="buy-span-2 buy-network-fees" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="buy-network-fees__head">
+                  <span className="buy-network-fees__title">{t.networkFeesTitle}</span>
+                </div>
+                <p className="buy-network-fees__intro">{t.networkFeesIntro}</p>
+                <div className="buy-network-fees__table" role="list">
+                  {(['TRC20', 'ERC20', 'BEP20']).map((net) => {
+                    const fee = NETWORK_TRANSFER_FEES_USD[net];
+                    const active = normalizedNetwork === net;
+                    return (
+                      <div
+                        key={net}
+                        role="listitem"
+                        className={`buy-network-fees__row${active ? ' buy-network-fees__row--active' : ''}`}
+                      >
+                        <span className="buy-network-fees__net">{net}</span>
+                        <span className="buy-network-fees__amt" dir="ltr">
+                          ~{formatFeeUsd(fee, lang)} USDT
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="buy-network-fees__selected">
+                  <span>{t.networkFeesSelected}</span>{' '}
+                  <strong className="text-accent" dir="ltr">
+                    {normalizedNetwork}
+                  </strong>
+                  {' — '}
+                  <span dir="ltr">~{formatFeeUsd(networkFeeUsd, lang)} USDT</span>
+                </div>
               </div>
-              <div className="text-muted text-sm" style={{ marginBottom: '0.65rem', lineHeight: 1.55 }}>
-                {t.networkTransferFeeHint}
-              </div>
-              <div
-                className="flex flex-wrap gap-x-6 gap-y-2"
-                style={{ flexDirection: isRtl ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'baseline' }}
-              >
-                <span className="text-muted text-sm">
-                  {normalizedNetwork}:{' '}
-                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text-primary)' }} dir="ltr">
-                    ${networkFeeUsd.toFixed(2)}
-                  </strong>{' '}
-                  USDT
-                </span>
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {t.netUsdtApprox}{' '}
-                  <strong className="text-accent" style={{ fontFamily: 'ui-monospace, monospace' }} dir="ltr">
-                    {netUsdtApprox.toFixed(2)}
-                  </strong>{' '}
-                  USDT
-                </span>
-              </div>
-              {networkFeeWarn && (
-                <p className="text-error text-sm mt-3 mb-0" style={{ lineHeight: 1.5 }}>
-                  {t.networkFeeTooHigh}
-                </p>
-              )}
             </div>
-
             <div className="text-muted text-sm mb-6" style={{ textAlign: isRtl ? 'right' : 'left' }}>
               {isRtl ? 'أقل مبلغ للتحويل هو 5 USDT' : 'Minimum transfer amount is 5 USDT'}
             </div>

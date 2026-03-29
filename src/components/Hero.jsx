@@ -1,14 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentDetails } from '../api';
-import { getNetworkTransferFeeUsd } from '../lib/networkFees';
 
 export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   const navigate = useNavigate();
   const [RATE, setRATE] = useState(1320);
   const [iqdEditing, setIqdEditing] = useState(false);
   const [iqdDraft, setIqdDraft] = useState('');
-  const [walletNetwork, setWalletNetwork] = useState('TRC20');
   const isRtl = lang === 'ar';
   const isAr = lang === 'ar';
   const heroTitle    = hero ? (isAr ? hero.titleAr    : hero.titleEn)    || t.heroTitle    : t.heroTitle;
@@ -27,11 +25,6 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
   };
 
   const iqdTotal = Math.max(0, Math.round(usdtAmount * RATE));
-  const networkFeeUsd = useMemo(() => getNetworkTransferFeeUsd(walletNetwork), [walletNetwork]);
-  const netUsdtApprox = useMemo(
-    () => Math.max(0, usdtAmount - networkFeeUsd),
-    [usdtAmount, networkFeeUsd],
-  );
 
   const handleIqdFocus = () => {
     setIqdEditing(true);
@@ -58,7 +51,6 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
       state: {
         lang,
         usdtAmount,
-        walletNetwork,
         createdAtMs: Date.now(),
       },
     });
@@ -141,44 +133,6 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
               top: '50%', transform: 'translateY(-50%)', 
               color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '0.8rem' 
             }}>IQD</span>
-          </div>
-        </div>
-
-        <div className="input-group" style={{ marginTop: '0.5rem' }}>
-          <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.networkSelectLabel}</label>
-          <select
-            className="input-control"
-            value={walletNetwork}
-            onChange={(e) => setWalletNetwork(e.target.value)}
-            style={{ textAlign: isRtl ? 'right' : 'left', appearance: 'none', cursor: 'pointer' }}
-          >
-            <option value="TRC20">TRC20 (~$1)</option>
-            <option value="ERC20">ERC20 (~$0.5)</option>
-            <option value="BEP20">BEP20 (~$0.1)</option>
-          </select>
-        </div>
-
-        <div
-          className="hero-network-fee-hint"
-          style={{
-            marginTop: '0.75rem',
-            padding: '0.75rem 1rem',
-            borderRadius: '12px',
-            background: 'rgba(0,229,255,0.06)',
-            border: '1px solid rgba(0,229,255,0.15)',
-            fontSize: '0.85rem',
-            lineHeight: 1.55,
-            color: 'var(--text-secondary)',
-            textAlign: isRtl ? 'right' : 'left',
-          }}
-        >
-          <div style={{ fontWeight: 700, color: 'var(--accent-primary)', marginBottom: '0.35rem' }}>{t.networkTransferFeeTitle}</div>
-          <div style={{ marginBottom: '0.5rem' }}>{t.networkTransferFeeHint}</div>
-          <div dir="ltr" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text-primary)' }}>
-            {t.netUsdtApprox} {netUsdtApprox.toFixed(2)} USDT
-            <span style={{ opacity: 0.75, marginLeft: '0.5rem', marginRight: '0.5rem' }}>
-              ({walletNetwork} − ${networkFeeUsd.toFixed(2)})
-            </span>
           </div>
         </div>
 

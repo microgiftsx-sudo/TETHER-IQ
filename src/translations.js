@@ -120,13 +120,10 @@ export const translations = {
       "للمبالغ من هذا المستوى قد نطلب التحقق من الهوية أو معلومات إضافية عبر الدعم قبل أو أثناء التنفيذ.",
     kycCheckboxLabel: "أفهم أن التحقق قد يُطلب عبر فريق الدعم لهذا الطلب.",
     kycAckRequired: "يرجى تفعيل الإقرار أعلاه للمتابعة.",
-    networkSelectLabel: "شبكة محفظة USDT",
-    networkTransferFeeTitle: "رسوم تحويل الشبكة (تقديري)",
-    networkTransferFeeHint:
-      "BEP20 ≈ 0.1$ · TRC20 ≈ 1$ · ERC20 ≈ 0.5$ — تُخصم عادةً من مبلغ USDT عند الإرسال.",
-    netUsdtApprox: "صافي الاستلام التقريبي:",
-    networkFeeTooHigh:
-      "مبلغ الطلب أقل من أو يساوي رسوم الشبكة التقديرية — زد المبلغ أو غيّر الشبكة.",
+    networkFeesTitle: "رسوم تحويل الشبكة (تقريبية)",
+    networkFeesIntro:
+      "تُدفع لشبكة البلوكشين عند إرسال USDT — ليست عمولة المنصة وقد تتغير قليلاً حسب الازدحام:",
+    networkFeesSelected: "للشبكة المختارة:",
   },
   en: {
     heroTitle: "Best Rate to Buy & Sell",
@@ -249,12 +246,9 @@ export const translations = {
       "For amounts at this level we may request ID verification or extra details via support before or during processing.",
     kycCheckboxLabel: "I understand verification may be requested via support for this order.",
     kycAckRequired: "Please confirm the checkbox above to continue.",
-    networkSelectLabel: "USDT wallet network",
-    networkTransferFeeTitle: "Estimated network transfer fee",
-    networkTransferFeeHint:
-      "BEP20 ≈ $0.10 · TRC20 ≈ $1 · ERC20 ≈ $0.50 — usually deducted from the USDT sent.",
-    netUsdtApprox: "Approx. net to wallet:",
-    networkFeeTooHigh:
-      "Order amount is at or below the estimated network fee — increase the amount or switch network.",
+    networkFeesTitle: "Network transfer fees (estimate)",
+    networkFeesIntro:
+      "Paid to the blockchain when sending USDT — not our platform fee; may vary slightly with congestion:",
+    networkFeesSelected: "Selected network:",
   },
 };
