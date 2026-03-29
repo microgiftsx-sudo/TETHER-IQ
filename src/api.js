@@ -51,6 +51,9 @@ export async function createOrder(payload) {
       if (j.telegramDescription) {
         msg = msg ? `${msg} — ${j.telegramDescription}` : j.telegramDescription;
       }
+      if (j.hint) {
+        msg = msg ? `${msg}\n\n${j.hint}` : j.hint;
+      }
     } catch {
       /* use text */
     }

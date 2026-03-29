@@ -115,24 +115,45 @@ function chatRateOk(req) {
   return true;
 }
 
+/**
+ * تطبيع chat_id من .env: إزالة مسافات/اقتباس. يُبقى كنص — واجهة تيليغرام تقبل chat_id كنص أو رقم.
+ * لا نحوّل إلى Number حتى لا يُفقد السالب أو يختلط مع معرّف مستخدم موجب.
+ */
+function normalizeTelegramChatId(raw) {
+  let s = String(raw ?? '').trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+function telegramChatIdForApi(id) {
+  if (id === '' || id == null) return '';
+  return String(id).trim();
+}
+
 /** دعم الموقع (محادثة العملاء) — يفضّل مجموعة منفصلة عن الطلبات والإعدادات */
 function telegramSupportChatId() {
-  return String(
-    process.env.TELEGRAM_SUPPORT_CHAT_ID
-      || process.env.TELEGRAM_WEBCHAT_CHAT_ID
-      || process.env.TELEGRAM_CHAT_ID
-      || '',
-  ).trim();
+  const raw = process.env.TELEGRAM_SUPPORT_CHAT_ID
+    || process.env.TELEGRAM_WEBCHAT_CHAT_ID
+    || process.env.TELEGRAM_CHAT_ID
+    || '';
+  const v = String(raw).trim();
+  return v ? normalizeTelegramChatId(v) : '';
 }
 
 /** طلبات الشراء والإثباتات */
 function telegramOrdersChatId() {
-  return String(process.env.TELEGRAM_ORDERS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+  const raw = process.env.TELEGRAM_ORDERS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  const v = String(raw).trim();
+  return v ? normalizeTelegramChatId(v) : '';
 }
 
 /** أوامر البوت والقوائم وCRM — غالباً مجموعة الإدارة */
 function telegramSettingsChatId() {
-  return String(process.env.TELEGRAM_SETTINGS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+  const raw = process.env.TELEGRAM_SETTINGS_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  const v = String(raw).trim();
+  return v ? normalizeTelegramChatId(v) : '';
 }
 
 /** إن وُجد أي من معرفات التقسيم، لا نُحقن TELEGRAM_CHAT_ID تلقائياً من أول رسالة */
@@ -166,7 +187,7 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
     '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
   ];
   const { data } = await tgPostJson(botToken, 'sendMessage', {
-    chat_id: chatId,
+    chat_id: telegramChatIdForApi(chatId),
     text: lines.join('\n'),
     parse_mode: 'HTML',
   });
@@ -707,19 +728,30 @@ app.post('/api/order', async (req, res) => {
     ].filter(Boolean);
 
     const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
-      chat_id: chatId,
+      chat_id: telegramChatIdForApi(chatId),
       text: lines.join('\n'),
       parse_mode: 'HTML',
       reply_markup: orderInlineKeyboard(safeOrderId),
     });
 
     if (!tgOrder?.ok) {
-       
       console.error('[order] Telegram sendMessage:', JSON.stringify(tgOrder || {}));
+      const desc = String(tgOrder?.description || '');
+      const lower = desc.toLowerCase();
+      let hint = null;
+      if (lower.includes('chat not found') || lower.includes('peer_id_invalid')) {
+        hint =
+          'تحقق: (1) TELEGRAM_ORDERS_CHAT_ID = معرّف مجموعة «الطلبات» يبدأ عادة بـ -100 '
+          + '(2) نفس البوت المذكور في TELEGRAM_BOT_TOKEN مضاف كعضو في تلك المجموعة '
+          + '(3) لا تخلط معرّف مجموعة الدعم/الإعدادات مع مجموعة الطلبات '
+          + '(4) جرّب في المتصفح: https://api.telegram.org/bot<TOKEN>/getChat?chat_id=<نفس_المعرّف>';
+      }
       return res.status(502).json({
         error: 'Telegram send failed',
         telegramDescription: tgOrder?.description || null,
         telegramErrorCode: tgOrder?.error_code ?? null,
+        hint,
+        context: 'telegram_orders',
       });
     }
 
@@ -878,7 +910,7 @@ async function botSend(text, extra = {}, forceChatId = null) {
 
     const { chat_id: _ignoreChat, ...restExtra } = extra;
     const { data } = await tgPostJson(botToken, 'sendMessage', {
-      chat_id: finalChatId,
+      chat_id: telegramChatIdForApi(finalChatId),
       text,
       parse_mode: 'HTML',
       ...restExtra,
