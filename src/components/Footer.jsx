@@ -54,6 +54,19 @@ export default function Footer({ t, lang = 'ar' }) {
           </nav>
 
           <p className="site-footer__copyright">{t.footerText}</p>
+
+          <p className="site-footer__email" dir={isRtl ? 'rtl' : 'ltr'}>
+            <span className="site-footer__email-label">{t.footerOfficialEmailLabel}</span>
+            <wbr />
+            {' '}
+            <a
+              href={`mailto:${t.footerOfficialEmail}`}
+              className="site-footer__email-link"
+              rel="noopener noreferrer"
+            >
+              {t.footerOfficialEmail}
+            </a>
+          </p>
         </div>
       </div>
     </footer>

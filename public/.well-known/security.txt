@@ -1,0 +1,3 @@
+# TETHER IQ - security contact (RFC 9116)
+Contact: mailto:manager@tetheriq.store
+Preferred-Languages: ar, en

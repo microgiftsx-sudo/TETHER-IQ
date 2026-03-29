@@ -651,6 +651,38 @@ footer.glass-panel.site-footer {
   color: rgba(148, 163, 184, 0.68);
 }
 
+.site-footer__email {
+  margin: 0.65rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: rgba(186, 198, 214, 0.88);
+}
+
+.site-footer__email-label {
+  color: rgba(148, 163, 184, 0.85);
+  margin-inline-end: 0.35rem;
+}
+
+.site-footer__email-link {
+  color: rgba(0, 229, 255, 0.92);
+  font-weight: 600;
+  text-decoration: none;
+  word-break: break-all;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.25);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.site-footer__email-link:hover {
+  color: #5ef0ff;
+  border-bottom-color: rgba(94, 240, 255, 0.45);
+}
+
+.site-footer__email-link:focus-visible {
+  outline: 2px solid rgba(0, 229, 255, 0.45);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Order tracking page */
 .order-track-card {
   max-width: 640px;
