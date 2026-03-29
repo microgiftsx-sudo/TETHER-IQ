@@ -110,7 +110,11 @@ export function buildPublicPaymentPayload(details, rate) {
   for (const key of METHOD_KEYS) {
     if (profile.methodEnabled?.[key] === false) continue;
     if (profile.methods?.[key]) {
-      methods[key] = { ...profile.methods[key] };
+      const m = { ...profile.methods[key] };
+      if (m.qrImage && m.qrImage.includes('api.telegram.org')) {
+        m.qrImage = '';
+      }
+      methods[key] = m;
     }
   }
 

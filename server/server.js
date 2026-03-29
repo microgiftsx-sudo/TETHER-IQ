@@ -93,6 +93,7 @@ const PORT = Number(process.env.PORT || 5174);
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'paymentDetails.json');
+const QR_DIR = path.join(DATA_DIR, 'qr');
 const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
 const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
@@ -271,6 +272,7 @@ function envRequired(name) {
 
 async function initDataFiles() {
   try { await mkdir(DATA_DIR, { recursive: true }); } catch { /* exists */ }
+  try { await mkdir(QR_DIR, { recursive: true }); } catch { /* exists */ }
   const defaultsDir = path.join(__dirname, 'defaults');
   const defaults = [
     { name: 'paymentDetails.json', dest: DATA_PATH },
@@ -705,6 +707,62 @@ function orderStatusLabelAr(status) {
   return map[s] || s;
 }
 
+/**
+ * تحميل صورة من رابط تيليغرام وحفظها محلياً في QR_DIR.
+ * يُرجع اسم الملف المحلي (بدون مسار).
+ */
+async function downloadQrToLocal(telegramUrl, profileId, methodKey) {
+  if (!telegramUrl || !telegramUrl.includes('api.telegram.org')) return '';
+  const ext = (telegramUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i) || [, 'jpg'])[1];
+  const filename = `${profileId}_${methodKey}.${ext}`;
+  const dest = path.join(QR_DIR, filename);
+  try {
+    const resp = await fetch(telegramUrl, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    await writeFile(dest, buf);
+    return filename;
+  } catch (e) {
+    console.error(`[QR download] ${methodKey}:`, e?.message || e);
+    return '';
+  }
+}
+
+/**
+ * لكل method في البروفايل: إن كان qrImage يحتوي api.telegram.org،
+ * حمّل الصورة محلياً واستبدل الرابط بمسار محلي.
+ * يُرجع true إذا تم تحديث أي حقل.
+ */
+async function migrateQrUrlsToLocal(details) {
+  let changed = false;
+  for (const profile of (details.profiles || [])) {
+    for (const key of METHOD_KEYS) {
+      const m = profile.methods?.[key];
+      if (!m?.qrImage || !m.qrImage.includes('api.telegram.org')) continue;
+      const localName = await downloadQrToLocal(m.qrImage, profile.id, key);
+      if (localName) {
+        m.qrImage = `/api/qr/${localName}`;
+        changed = true;
+      }
+    }
+  }
+  if (changed) await savePaymentDetails(details);
+  return changed;
+}
+
+app.get('/api/qr/:filename', async (req, res) => {
+  const filename = String(req.params.filename || '').replace(/[^a-zA-Z0-9_.\-]/g, '');
+  if (!filename) return res.status(400).end();
+  const filePath = path.join(QR_DIR, filename);
+  try {
+    await access(filePath);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(filePath);
+  } catch {
+    res.status(404).end();
+  }
+});
+
 app.get('/api/payment-details', async (_req, res) => {
   try {
     const details = await loadPaymentDetails();
@@ -931,7 +989,12 @@ const adminIds = new Set(String(process.env.TELEGRAM_ADMIN_IDS || '')
 let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
-let pendingState = null; // { action, path?, label?, method? }
+const pendingStates = new Map(); // chatId -> { action, path?, label?, method? }
+function getPendingState(chatId) { return pendingStates.get(String(chatId)) || null; }
+function setPendingState(chatId, state) {
+  if (state) pendingStates.set(String(chatId), state);
+  else pendingStates.delete(String(chatId));
+}
 
 function isAdminMessage(msg) {
   const fromId = msg?.from?.id;
@@ -1391,8 +1454,8 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   // ── Main navigation ─────────────────────────────────
-  if (data === 'menu_main')  { pendingState = null; await sendMainMenu(incomingChatId); return; }
-  if (data === 'cancel_input') { pendingState = null; await sendMainMenu(incomingChatId); return; }
+  if (data === 'menu_main')  { setPendingState(incomingChatId, null); await sendMainMenu(incomingChatId); return; }
+  if (data === 'cancel_input') { setPendingState(incomingChatId, null); await sendMainMenu(incomingChatId); return; }
 
   if (data === 'menu_profiles') {
     await showProfilesMenu(incomingChatId);
@@ -1400,7 +1463,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   if (data === 'prof_add') {
-    pendingState = { action: 'addProfile', step: 0 };
+    setPendingState(incomingChatId, { action: 'addProfile', step: 0 });
     await botSend('👤 أرسل <b>اسم البروفايل بالعربية</b> (مثال: علي عدنان):', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
@@ -1561,12 +1624,12 @@ async function handleCallbackQuery(data, incomingChatId) {
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
-    pendingState = { action: 'rateFixed' };
+    setPendingState(incomingChatId, { action: 'rateFixed' });
     await botSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
   if (data === 'rate_float') {
-    pendingState = { action: 'rateFloat' };
+    setPendingState(incomingChatId, { action: 'rateFloat' });
     await botSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
@@ -1583,7 +1646,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     const [method, label, backTo] = qrMap[data];
     const details = await loadPaymentDetails();
     const pid = resolveEditingProfileId(details, incomingChatId);
-    pendingState = { action: 'awaitPhoto', method, label, backTo, profileId: pid };
+    setPendingState(incomingChatId, { action: 'awaitPhoto', method, label, backTo, profileId: pid });
     await botSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
@@ -1676,7 +1739,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     const details = await loadPaymentDetails();
     const profileId = resolveEditingProfileId(details, incomingChatId);
     const [path, label, backTo] = fieldMap[data];
-    pendingState = { action: 'editField', path, label, backTo, profileId };
+    setPendingState(incomingChatId, { action: 'editField', path, label, backTo, profileId });
     await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
@@ -1691,7 +1754,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     return;
   }
   if (data === 'timer_custom') {
-    pendingState = { action: 'setTimer' };
+    setPendingState(incomingChatId, { action: 'setTimer' });
     await botSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() }, incomingChatId);
     return;
   }
@@ -1797,7 +1860,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     return;
   }
   if (data === 'faq_add') {
-    pendingState = { action: 'addFaq', step: 0, data: {} };
+    setPendingState(incomingChatId, { action: 'addFaq', step: 0, data: {} });
     await botSend('❓ أرسل <b>السؤال بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
@@ -1822,7 +1885,7 @@ async function handleCallbackQuery(data, incomingChatId) {
     return;
   }
   if (data === 'rev_add') {
-    pendingState = { action: 'addReview', step: 0, data: {} };
+    setPendingState(incomingChatId, { action: 'addReview', step: 0, data: {} });
     await botSend('👤 أرسل <b>الاسم بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
@@ -1836,7 +1899,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   };
   if (statFieldMap[data]) {
     const [field, label, backTo] = statFieldMap[data];
-    pendingState = { action: 'setStat', field, label, backTo };
+    setPendingState(incomingChatId, { action: 'setStat', field, label, backTo });
     await botSend(`📊 أرسل القيمة الجديدة لـ <b>${label}</b> (رقم فقط):`, { reply_markup: cancelButton() });
     return;
   }
@@ -1857,7 +1920,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   };
   if (siteFieldMap[data]) {
     const [dotPath, label, backTo] = siteFieldMap[data];
-    pendingState = { action: 'editSiteField', dotPath, label, backTo };
+    setPendingState(incomingChatId, { action: 'editSiteField', dotPath, label, backTo });
     await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
     return;
   }
@@ -1924,15 +1987,16 @@ async function handleAdminCommand(text, incomingChatId) {
   console.log(`Bot Command Received: "${raw}" from Chat: ${incomingChatId}`);
 
   // ── Handle pending input state ──────────────────────
+  const pendingState = getPendingState(incomingChatId);
   if (pendingState) {
     const st = pendingState;
-    pendingState = null;
+    setPendingState(incomingChatId, null);
 
     if (st.action === 'rateFixed') {
       const val = Number(raw);
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
         await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
-        pendingState = st;
+        setPendingState(incomingChatId, st);
         return;
       }
       const details = await loadPaymentDetails();
@@ -1949,7 +2013,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
         await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
-        pendingState = st;
+        setPendingState(incomingChatId, st);
         return;
       }
       const details = await loadPaymentDetails();
@@ -1967,7 +2031,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const mins = Number(raw);
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
         await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
-        pendingState = st;
+        setPendingState(incomingChatId, st);
         return;
       }
       const details = await loadPaymentDetails();
@@ -1989,7 +2053,6 @@ async function handleAdminCommand(text, incomingChatId) {
       setByPath(prof.methods, st.path, raw);
       profiles[idx] = prof;
       await savePaymentDetails({ ...details, profiles });
-      pendingState = null;
       await botSend(`✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${raw}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } }, incomingChatId);
       return;
     }
@@ -1997,7 +2060,7 @@ async function handleAdminCommand(text, incomingChatId) {
     if (st.action === 'addProfile') {
       const d = st.data || {};
       if (st.step === 0) {
-        pendingState = { action: 'addProfile', step: 1, data: { nameAr: raw } };
+        setPendingState(incomingChatId, { action: 'addProfile', step: 1, data: { nameAr: raw } });
         await botSend('أرسل <b>الاسم بالإنجليزية</b> (اختياري — يمكن إرسال نفس العربي):', { reply_markup: cancelButton() }, incomingChatId);
         return;
       }
@@ -2013,7 +2076,6 @@ async function handleAdminCommand(text, incomingChatId) {
           methods: defaultEmptyMethods(),
         });
         await savePaymentDetails({ ...details, profiles: [...details.profiles, newP] });
-        pendingState = null;
         await botSend(`✅ تم إنشاء البروفايل:\n<b>${newP.nameAr}</b>\nاضغط «البروفايلات» لجعله نشطاً على الموقع أو تعديل حساباته.`, { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } }, incomingChatId);
         return;
       }
@@ -2030,17 +2092,17 @@ async function handleAdminCommand(text, incomingChatId) {
     if (st.action === 'addFaq') {
       const d = st.data || {};
       if (st.step === 0) {
-        pendingState = { action: 'addFaq', step: 1, data: { qAr: raw } };
+        setPendingState(incomingChatId, { action: 'addFaq', step: 1, data: { qAr: raw } });
         await botSend('✍️ أرسل <b>الجواب بالعربية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 1) {
-        pendingState = { action: 'addFaq', step: 2, data: { ...d, aAr: raw } };
+        setPendingState(incomingChatId, { action: 'addFaq', step: 2, data: { ...d, aAr: raw } });
         await botSend('🇬🇧 أرسل <b>السؤال بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 2) {
-        pendingState = { action: 'addFaq', step: 3, data: { ...d, qEn: raw } };
+        setPendingState(incomingChatId, { action: 'addFaq', step: 3, data: { ...d, qEn: raw } });
         await botSend('✍️ أرسل <b>الجواب بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
@@ -2056,11 +2118,11 @@ async function handleAdminCommand(text, incomingChatId) {
 
     if (st.action === 'addReview') {
       const d = st.data || {};
-      if (st.step === 0) { pendingState = { action: 'addReview', step: 1, data: { nameAr: raw } }; await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
-      if (st.step === 1) { pendingState = { action: 'addReview', step: 2, data: { ...d, cityAr: raw } }; await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 0) { setPendingState(incomingChatId, { action: 'addReview', step: 1, data: { nameAr: raw } }); await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 1) { setPendingState(incomingChatId, { action: 'addReview', step: 2, data: { ...d, cityAr: raw } }); await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
       if (st.step === 2) {
         const stars = Math.min(5, Math.max(1, Number(raw) || 5));
-        pendingState = { action: 'addReview', step: 3, data: { ...d, stars } };
+        setPendingState(incomingChatId, { action: 'addReview', step: 3, data: { ...d, stars } });
         await botSend('✍️ أرسل <b>نص التقييم:</b>', { reply_markup: cancelButton() });
         return;
       }
@@ -2077,7 +2139,7 @@ async function handleAdminCommand(text, incomingChatId) {
       const val = Number(raw);
       if (!Number.isFinite(val) || val < 0) {
         await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
-        pendingState = st;
+        setPendingState(incomingChatId, st);
         return;
       }
       const stats = await loadStats();
@@ -2287,14 +2349,19 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profil
   try {
     const { data: fileData } = await tgGetFile(botToken, fileId);
     if (!fileData?.ok || !fileData?.result?.file_path) throw new Error('getFile failed');
-    const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+    const telegramUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
     const details = await loadPaymentDetails();
     const pid = profileId || details.currentProfileId;
     const idx = profileIndex(details, pid);
     if (idx < 0) throw new Error('profile not found');
+
+    const localName = await downloadQrToLocal(telegramUrl, pid, methodKey.replace('.qrImage', '').replace(/\./g, '_'));
+    if (!localName) throw new Error('download failed');
+    const localUrl = `/api/qr/${localName}`;
+
     const profiles = [...details.profiles];
     const prof = { ...profiles[idx], methods: JSON.parse(JSON.stringify(profiles[idx].methods)) };
-    setByPath(prof.methods, fieldPath, fileUrl);
+    setByPath(prof.methods, fieldPath, localUrl);
     profiles[idx] = prof;
     await savePaymentDetails({ ...details, profiles });
     await botSend(`✅ تم حفظ باركود <b>${label || methodKey}</b> لبروفايل <b>${prof.nameAr}</b>!`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } }, chatId);
@@ -2335,10 +2402,11 @@ async function handlePhotoMessage(msg) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return;
 
-  // ── Check if we're awaiting a photo from button flow ──
-  if (pendingState?.action === 'awaitPhoto') {
-    const { method, label, backTo, profileId } = pendingState;
-    pendingState = null;
+  const chatId = msg.chat?.id;
+  const ps = getPendingState(chatId);
+  if (ps?.action === 'awaitPhoto') {
+    const { method, label, backTo, profileId } = ps;
+    setPendingState(chatId, null);
     await savePhotoAsQr(msg, method, label, backTo || 'menu_edit', profileId);
     return;
   }
@@ -2451,11 +2519,21 @@ if (IS_PROD) {
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   logTelegramChatEnvAtStartup();
-  initDataFiles().then(() => drainPendingUpdates()).then(() => {
-    const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
-    loopPoll();
-     
-    console.log('Telegram polling enabled. Send any message to the bot, then use /help.');
-  });
+  initDataFiles()
+    .then(async () => {
+      try {
+        const d = await loadPaymentDetails();
+        const migrated = await migrateQrUrlsToLocal(d);
+        if (migrated) console.log('[QR] Migrated Telegram URLs to local files');
+      } catch (e) {
+        console.error('[QR migration]', e?.message || e);
+      }
+    })
+    .then(() => drainPendingUpdates())
+    .then(() => {
+      const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
+      loopPoll();
+      console.log('Telegram polling enabled. Send any message to the bot, then use /help.');
+    });
 });
 
