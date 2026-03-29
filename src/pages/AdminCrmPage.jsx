@@ -122,10 +122,24 @@ export default function AdminCrmPage() {
     downloadBlob(blob, kind === 'visits' ? 'visits.csv' : 'orders.csv');
   };
 
+  const reportHtmlUrl = (opts = {}) => {
+    const q = new URLSearchParams({ token });
+    if (opts.print) q.set('print', '1');
+    return `${window.location.origin}${API_BASE}/api/admin/crm/report.html?${q.toString()}`;
+  };
+
   const openPrintReport = () => {
     if (!token) return;
-    const u = `${window.location.origin}${API_BASE}/api/admin/crm/report.html?token=${encodeURIComponent(token)}`;
-    window.open(u, '_blank', 'noopener,noreferrer');
+    window.open(reportHtmlUrl(), '_blank', 'noopener,noreferrer');
+  };
+
+  /** يفتح التقرير مع print=1 — السيرفر يطلق window.print() بعد التحميل لحفظ PDF. */
+  const exportPdf = () => {
+    if (!token) return;
+    const w = window.open(reportHtmlUrl({ print: true }), '_blank', 'noopener,noreferrer');
+    if (!w) {
+      setErr('تعذّر فتح نافذة التصدير. اسمح بالنوافذ المنبثقة للموقع ثم أعد المحاولة.');
+    }
   };
 
   return (
@@ -177,11 +191,19 @@ export default function AdminCrmPage() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem', alignItems: 'center' }}>
               <button type="button" className="btn btn-primary" onClick={() => exportCsv('visits')} disabled={loading}>تصدير CSV زيارات</button>
               <button type="button" className="btn btn-primary" onClick={() => exportCsv('orders')} disabled={loading}>تصدير CSV طلبات</button>
-              <button type="button" className="btn btn-primary" onClick={openPrintReport} disabled={loading}>تقرير HTML (طباعة PDF)</button>
+              <button type="button" className="btn btn-outline" onClick={exportPdf} disabled={loading} title="يفتح التقرير ثم حوار الطباعة — اختر «حفظ كـ PDF»">
+                تصدير PDF
+              </button>
+              <button type="button" className="btn btn-outline" onClick={openPrintReport} disabled={loading} title="فتح التقرير في تبويب جديد للمعاينة">
+                معاينة HTML
+              </button>
             </div>
+            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '-0.5rem', marginBottom: '1.25rem' }}>
+              PDF: بعد الضغط يفتح التقرير ثم نافذة الطباعة — اختر الطابعة «Save as PDF» / «Microsoft Print to PDF» أو ما يعادلها.
+            </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
               <div className="glass-panel" style={{ padding: '1rem', overflow: 'auto', border: '1px solid rgba(255,255,255,0.08)' }}>

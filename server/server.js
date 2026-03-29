@@ -491,7 +491,13 @@ app.get('/api/admin/crm/report.html', async (req, res) => {
     const orders = await loadOrders(ORDERS_CRM_PATH);
     const vSl = getRecentVisits(visits, 200);
     const oSl = getRecentOrders(orders, 200);
-    const html = buildPrintableHtmlReport(summary, vSl, oSl);
+    let html = buildPrintableHtmlReport(summary, vSl, oSl);
+    if (String(req.query.print || '') === '1') {
+      html = html.replace(
+        '</body>',
+        '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},450);});</script></body>'
+      );
+    }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (e) {
