@@ -249,9 +249,7 @@ export default function ChatWidget({ t, lang }) {
         </svg>
         <span className="tg-float-label">{t.chatOpen}</span>
         {!open && unreadCount > 0 && (
-          <span className="web-chat-unread-badge" aria-label={isRtl ? 'رسائل جديدة' : 'New messages'}>
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
+          <span className="web-chat-unread-badge" aria-label={isRtl ? 'رسائل جديدة' : 'New messages'} />
         )}
       </button>
 
