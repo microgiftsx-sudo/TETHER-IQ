@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createChatSession, sendChatMessage, fetchChatMessages } from '../api';
+import { getOrCreateVisitorId } from '../visitTracking';
 
 const STORAGE_KEY = 'web_chat_session_id';
 const NAME_KEY = 'web_chat_visitor_name';
@@ -215,7 +216,8 @@ export default function ChatWidget({ t, lang }) {
     try {
       const sid = sessionId || (await ensureSession());
       const nm = visitorName.trim();
-      await sendChatMessage(sid, text, nm);
+      const visitorId = getOrCreateVisitorId();
+      await sendChatMessage(sid, text, nm, visitorId);
       if (nm) lockName(nm);
       setInput('');
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));

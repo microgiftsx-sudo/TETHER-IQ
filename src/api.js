@@ -109,10 +109,10 @@ export function createChatSession() {
   return jsonFetch('/api/chat/session', { method: 'POST', body: '{}' });
 }
 
-export function sendChatMessage(sessionId, text, visitorName = '') {
+export function sendChatMessage(sessionId, text, visitorName = '', visitorId = '') {
   return jsonFetch('/api/chat/message', {
     method: 'POST',
-    body: JSON.stringify({ sessionId, text, visitorName }),
+    body: JSON.stringify({ sessionId, text, visitorName, visitorId }),
   });
 }
 

@@ -173,7 +173,7 @@ function hasExplicitSplitTelegramChatIds() {
   return false;
 }
 
-async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
+async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientIp = '', visitorFingerprint = '') {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = telegramSupportChatId();
   if (!botToken || !chatId) return null;
@@ -184,6 +184,8 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName) {
     '💬 <b>رسالة من الموقع</b>',
     `🆔 <code>${escapeTelegramHtml(sessionId)}</code>`,
     nameLine,
+    `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
+    `<b>🧬 Fingerprint:</b> <code>${escapeTelegramHtml(visitorFingerprint || '—')}</code>`,
     '━━━━━━━━━━━━━━━',
     escapeTelegramHtml(userText),
     '',
@@ -641,6 +643,17 @@ app.post('/api/chat/message', async (req, res) => {
     const sessionId = String(body.sessionId || '').trim();
     const text = String(body.text || '').trim();
     const visitorName = String(body.visitorName || '').trim().slice(0, 80);
+    const visitorFingerprint = normalizeFingerprintInput(body.visitorId || '');
+    const clientIp = getClientIpFromRequest(req);
+    const blocked = await getBlockedIpEntry(clientIp);
+    if (blocked) {
+      return res.status(403).json(blockedViolationPayload(blocked));
+    }
+    const blockedFp = await getBlockedFingerprintEntry(visitorFingerprint);
+    if (blockedFp) {
+      return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    await maybeWarnSameIpAsBlockedFingerprint(clientIp, visitorFingerprint);
     if (!sessionId.startsWith('sess_') || text.length < 1 || text.length > 4000) {
       return res.status(400).json({ error: 'Invalid payload' });
     }
@@ -649,7 +662,7 @@ app.post('/api/chat/message', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
     appendUserMessage(store, sessionId, text, visitorName);
-    const tgMsgId = await notifyWebChatToTelegram(sessionId, text, visitorName);
+    const tgMsgId = await notifyWebChatToTelegram(sessionId, text, visitorName, clientIp, visitorFingerprint);
     if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
     await saveChatStore(CHAT_PATH, store);
     res.json({ ok: true });
