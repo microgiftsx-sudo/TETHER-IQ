@@ -70,7 +70,7 @@ export default function BuyPage() {
       .then((d) => mounted && setDetails(d))
       .catch((e) => {
         if (!mounted) return;
-        if (e?.code === 'IP_BLOCKED') {
+        if (e?.code === 'IP_BLOCKED' || e?.code === 'FP_BLOCKED') {
           const localized = lang === 'en'
             ? (e?.messageEn || e?.message || 'This IP has been blocked for policy violation. Please contact support.')
             : (e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.');
@@ -192,7 +192,7 @@ export default function BuyPage() {
         setError(isRtl ? e.message : (e.errorEn || e.message));
       } else if (e?.code === 'KYC_ACK_REQUIRED') {
         setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
-      } else if (e?.code === 'IP_BLOCKED') {
+      } else if (e?.code === 'IP_BLOCKED' || e?.code === 'FP_BLOCKED') {
         const localized = lang === 'en'
           ? (e?.messageEn || e?.message || 'This IP has been blocked for policy violation. Please contact support.')
           : (e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.');

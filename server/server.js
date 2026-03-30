@@ -98,10 +98,12 @@ const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
 const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
 const BLOCKED_IPS_PATH = path.join(DATA_DIR, 'blockedIps.json');
+const BLOCKED_FINGERPRINTS_PATH = path.join(DATA_DIR, 'blockedFingerprints.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
 const chatPostLimiter = new Map();
+const suspiciousIpAlertLimiter = new Map();
 
 function chatRateOk(req) {
   const ip = String(req.ip || req.socket?.remoteAddress || 'anon').replace(/^::ffff:/, '');
@@ -271,6 +273,7 @@ async function initDataFiles() {
     { name: 'stats.json', dest: STATS_PATH },
     { name: 'testimonials.json', dest: TESTIMONIALS_PATH },
     { name: 'blockedIps.json', dest: BLOCKED_IPS_PATH },
+    { name: 'blockedFingerprints.json', dest: BLOCKED_FINGERPRINTS_PATH },
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
@@ -397,12 +400,66 @@ async function getBlockedIpEntry(ip) {
   return list.find((it) => it.ip === clean) || null;
 }
 
+function normalizeFingerprintInput(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .slice(0, 120);
+}
+
+async function loadBlockedFingerprints() {
+  try {
+    const raw = JSON.parse(await readFile(BLOCKED_FINGERPRINTS_PATH, 'utf8'));
+    const list = Array.isArray(raw) ? raw : [];
+    return list
+      .map((it) => ({
+        fingerprint: normalizeFingerprintInput(it?.fingerprint || ''),
+        reason: String(it?.reason || '').trim().slice(0, 200),
+        at: String(it?.at || ''),
+        ipSnapshot: normalizeBlockedIpInput(it?.ipSnapshot || ''),
+      }))
+      .filter((it) => it.fingerprint);
+  } catch {
+    return [];
+  }
+}
+
+async function saveBlockedFingerprints(list) {
+  const normalized = (Array.isArray(list) ? list : [])
+    .map((it) => ({
+      fingerprint: normalizeFingerprintInput(it?.fingerprint || ''),
+      reason: String(it?.reason || '').trim().slice(0, 200),
+      at: String(it?.at || new Date().toISOString()),
+      ipSnapshot: normalizeBlockedIpInput(it?.ipSnapshot || ''),
+    }))
+    .filter((it) => it.fingerprint);
+  await writeFile(BLOCKED_FINGERPRINTS_PATH, JSON.stringify(normalized, null, 2), 'utf8');
+  return normalized;
+}
+
+async function getBlockedFingerprintEntry(fp) {
+  const clean = normalizeFingerprintInput(fp);
+  if (!clean) return null;
+  const list = await loadBlockedFingerprints();
+  return list.find((it) => it.fingerprint === clean) || null;
+}
+
 function blockedViolationPayload(entry) {
   return {
     error: 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.',
     code: 'IP_BLOCKED',
     messageAr: 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.',
     messageEn: 'This IP has been blocked for policy violation. Please contact support.',
+    reason: entry?.reason || 'مخالفة',
+  };
+}
+
+function blockedFingerprintViolationPayload(entry) {
+  return {
+    error: 'تم حظر هذا الجهاز بسبب مخالفة. يرجى التواصل مع الدعم.',
+    code: 'FP_BLOCKED',
+    messageAr: 'تم حظر هذا الجهاز بسبب مخالفة. يرجى التواصل مع الدعم.',
+    messageEn: 'This device fingerprint has been blocked for policy violation. Please contact support.',
     reason: entry?.reason || 'مخالفة',
   };
 }
@@ -427,6 +484,52 @@ function resolveOrderIp(orderRow, visits = []) {
   }
 
   return '';
+}
+
+async function findRecentIpByFingerprint(fingerprint) {
+  const fp = normalizeFingerprintInput(fingerprint);
+  if (!fp) return '';
+  const visits = await loadVisits(VISITS_PATH);
+  for (let i = visits.length - 1; i >= 0; i -= 1) {
+    const v = visits[i];
+    if (String(v?.visitorId || '') !== fp) continue;
+    const ip = normalizeBlockedIpInput(v?.ip || '');
+    if (ip) return ip;
+  }
+  const orders = await loadOrders(ORDERS_CRM_PATH);
+  for (let i = orders.length - 1; i >= 0; i -= 1) {
+    const o = orders[i];
+    if (String(o?.visitorId || '') !== fp) continue;
+    const ip = normalizeBlockedIpInput(o?.ip || '');
+    if (ip) return ip;
+  }
+  return '';
+}
+
+async function maybeWarnSameIpAsBlockedFingerprint(clientIp, currentFingerprint) {
+  const ip = normalizeBlockedIpInput(clientIp);
+  const fp = normalizeFingerprintInput(currentFingerprint);
+  if (!ip || !fp) return;
+  const blockedFpList = await loadBlockedFingerprints();
+  const hit = blockedFpList.find((it) => it.ipSnapshot && it.ipSnapshot === ip && it.fingerprint !== fp);
+  if (!hit) return;
+
+  const key = `${ip}|${hit.fingerprint}|${fp}`;
+  const now = Date.now();
+  const last = suspiciousIpAlertLimiter.get(key) || 0;
+  if (now - last < 10 * 60 * 1000) return;
+  suspiciousIpAlertLimiter.set(key, now);
+
+  await botSend(
+    [
+      '⚠️ <b>تحذير اشتباه (IP مشترك مع بصمة محظورة)</b>',
+      `IP الحالي: <code>${escapeTelegramHtml(ip)}</code>`,
+      `البصمة الحالية: <code>${escapeTelegramHtml(fp)}</code>`,
+      `البصمة المحظورة على نفس IP: <code>${escapeTelegramHtml(hit.fingerprint)}</code>`,
+      `السبب: <b>${escapeTelegramHtml(hit.reason || 'مخالفة')}</b>`,
+      '<i>قد يكون نفس الشخص يستخدم جهازًا مختلفًا.</i>',
+    ].join('\n')
+  );
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -637,6 +740,11 @@ app.post('/api/track-visit', async (req, res) => {
     }
     const body = req.body || {};
     const visitorId = String(body.visitorId || '');
+    const blockedFp = await getBlockedFingerprintEntry(visitorId);
+    if (blockedFp) {
+      return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    await maybeWarnSameIpAsBlockedFingerprint(clientIp, visitorId);
     const pagePath = String(body.path || '/');
     if (shouldSkipVisitDedupe(visitorId, pagePath)) {
       return res.json({ ok: true, skipped: true });
@@ -945,6 +1053,11 @@ app.post('/api/order', async (req, res) => {
       return res.status(403).json(blockedViolationPayload(blocked));
     }
     const visitorId = String(bodyVisitorId || '').trim() || `ip:${clientIp}`;
+    const blockedFp = await getBlockedFingerprintEntry(visitorId);
+    if (blockedFp) {
+      return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    await maybeWarnSameIpAsBlockedFingerprint(clientIp, visitorId);
     const ua = req.get('user-agent') || '';
     const deviceLabel = describeDeviceFromUa(ua);
 
@@ -1181,6 +1294,11 @@ function helpText() {
     '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
     '/unbanip 1.2.3.4 — فك الحظر',
     '/blockedips — عرض آخر عناوين محظورة',
+    '',
+    '🧬 حظر Fingerprint:',
+    '/banfp <fingerprint> [سبب اختياري] — حظر بصمة جهاز',
+    '/unbanfp <fingerprint> — فك حظر بصمة جهاز',
+    '/blockedfps — عرض آخر بصمات محظورة',
     '',
     '✏️ تعديل البيانات:',
     '/set methods.fastPay.number 07...',
@@ -2444,6 +2562,71 @@ async function handleAdminCommand(text, incomingChatId) {
       .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
       .join('\n');
     await botSend(`🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`, {}, incomingChatId);
+    return;
+  }
+
+  if (trimmed.startsWith('/banfp ')) {
+    const payload = raw.slice(7).trim();
+    const [fpRaw, ...reasonParts] = payload.split(/\s+/);
+    const fingerprint = normalizeFingerprintInput(fpRaw);
+    if (!fingerprint) {
+      await botSend('❌ استخدم: <code>/banfp fingerprint [سبب اختياري]</code>', {}, incomingChatId);
+      return;
+    }
+    const reason = reasonParts.join(' ').trim().slice(0, 200) || 'مخالفة';
+    const list = await loadBlockedFingerprints();
+    const ipSnapshot = await findRecentIpByFingerprint(fingerprint);
+    const exists = list.find((it) => it.fingerprint === fingerprint);
+    if (exists) {
+      exists.reason = reason;
+      exists.at = new Date().toISOString();
+      exists.ipSnapshot = ipSnapshot || exists.ipSnapshot || '';
+    } else {
+      list.push({ fingerprint, reason, at: new Date().toISOString(), ipSnapshot });
+    }
+    await saveBlockedFingerprints(list);
+    await botSend(
+      [
+        '🚫 تم حظر Fingerprint:',
+        `<code>${escapeTelegramHtml(fingerprint)}</code>`,
+        `السبب: <b>${escapeTelegramHtml(reason)}</b>`,
+        `IP snapshot: <code>${escapeTelegramHtml(ipSnapshot || '—')}</code>`,
+      ].join('\n'),
+      {},
+      incomingChatId
+    );
+    return;
+  }
+
+  if (trimmed.startsWith('/unbanfp ')) {
+    const fingerprint = normalizeFingerprintInput(raw.slice(9).trim());
+    if (!fingerprint) {
+      await botSend('❌ استخدم: <code>/unbanfp fingerprint</code>', {}, incomingChatId);
+      return;
+    }
+    const list = await loadBlockedFingerprints();
+    const next = list.filter((it) => it.fingerprint !== fingerprint);
+    if (next.length === list.length) {
+      await botSend(`ℹ️ هذه البصمة غير موجودة في الحظر:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, {}, incomingChatId);
+      return;
+    }
+    await saveBlockedFingerprints(next);
+    await botSend(`✅ تم فك الحظر عن Fingerprint:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, {}, incomingChatId);
+    return;
+  }
+
+  if (trimmed === '/blockedfps' || trimmed === '/blockedfp') {
+    const list = await loadBlockedFingerprints();
+    if (!list.length) {
+      await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', {}, incomingChatId);
+      return;
+    }
+    const view = list
+      .slice(-20)
+      .reverse()
+      .map((it) => `• <code>${escapeTelegramHtml(it.fingerprint)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}\n  IP snapshot: <code>${escapeTelegramHtml(it.ipSnapshot || '—')}</code>`)
+      .join('\n');
+    await botSend(`🧬 <b>البصمات المحظورة (آخر 20)</b>\n${view}`, {}, incomingChatId);
     return;
   }
 
