@@ -249,7 +249,7 @@ export default function ChatWidget({ t, lang }) {
         </svg>
         <span className="tg-float-label">{t.chatOpen}</span>
         {!open && unreadCount > 0 && (
-          <span className="web-chat-unread-badge" aria-label={isRtl ? 'رسائل جديدة' : 'New messages'} />
+          <span className="web-chat-unread-dot" aria-label={isRtl ? 'رسالة جديدة' : 'New message'} />
         )}
       </button>
 
