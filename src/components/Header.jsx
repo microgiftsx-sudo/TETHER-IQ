@@ -1,10 +1,66 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Header({ t, lang, toggleLang, links }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [announcementHidden, setAnnouncementHidden] = useState(false);
   const isRtl = lang === 'ar';
   const navigate = useNavigate();
+  const lastScrollYRef = useRef(0);
+  const lastToggleYRef = useRef(0);
+  const announcementHiddenRef = useRef(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (mobileOpen) root.classList.add('has-mobile-menu-open');
+    else root.classList.remove('has-mobile-menu-open');
+    return () => root.classList.remove('has-mobile-menu-open');
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const y = Math.max(0, window.scrollY || 0);
+      const prev = lastScrollYRef.current;
+      const delta = y - prev;
+      const HIDE_AFTER_PX = 80;
+      const SHOW_BEFORE_PX = 24;
+      const MIN_TRAVEL_PX = 28;
+      const MIN_DELTA_PX = 2;
+
+      lastScrollYRef.current = y;
+
+      if (Math.abs(delta) < MIN_DELTA_PX) return;
+
+      const setHiddenStable = (next) => {
+        if (announcementHiddenRef.current === next) return;
+        announcementHiddenRef.current = next;
+        lastToggleYRef.current = y;
+        setAnnouncementHidden(next);
+      };
+
+      if (y <= SHOW_BEFORE_PX) {
+        setHiddenStable(false);
+        return;
+      }
+
+      const travelFromLastToggle = Math.abs(y - lastToggleYRef.current);
+      if (travelFromLastToggle < MIN_TRAVEL_PX) return;
+
+      if (delta > 0 && !announcementHiddenRef.current && y >= HIDE_AFTER_PX) {
+        setHiddenStable(true);
+        return;
+      }
+      if (delta < 0 && announcementHiddenRef.current) {
+        setHiddenStable(false);
+      }
+    };
+
+    lastScrollYRef.current = Math.max(0, window.scrollY || 0);
+    lastToggleYRef.current = lastScrollYRef.current;
+    announcementHiddenRef.current = announcementHidden;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [announcementHidden]);
 
   const navLinks = [
     { label: t.navHome, href: '#hero' },
@@ -32,7 +88,7 @@ export default function Header({ t, lang, toggleLang, links }) {
 
   return (
     <header className="header-sticky">
-      <div className="header-announcement">
+      <div className={`header-announcement${announcementHidden ? ' header-announcement--hidden' : ''}`}>
         {t.announcement}
       </div>
 

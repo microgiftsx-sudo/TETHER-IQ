@@ -14,10 +14,47 @@ export default function ChatWidget({ t, lang }) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [lastId, setLastId] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const listRef = useRef(null);
   const pollRef = useRef(null);
+  const lastIdRef = useRef(0);
+  const audioCtxRef = useRef(null);
+
+  useEffect(() => {
+    lastIdRef.current = lastId;
+  }, [lastId]);
+
+  const playNotificationTone = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      const now = ctx.currentTime;
+      const tone = (startAt, freq, gainVal) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startAt);
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(gainVal, startAt + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.14);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startAt);
+        osc.stop(startAt + 0.16);
+      };
+      tone(now, 880, 0.05);
+      tone(now + 0.18, 1240, 0.04);
+    } catch {
+      // ignore sound errors
+    }
+  }, []);
 
   const scrollBottom = () => {
     const el = listRef.current;
@@ -52,6 +89,8 @@ export default function ChatWidget({ t, lang }) {
 
   const mergeIncoming = useCallback((incoming) => {
     if (!incoming?.length) return;
+    const newSinceLast = incoming.filter((m) => Number(m.id) > Number(lastIdRef.current || 0));
+    const newStaff = newSinceLast.filter((m) => m.role === 'staff');
     setMessages((prev) => {
       const byId = new Map(prev.map((m) => [m.id, m]));
       incoming.forEach((m) => byId.set(m.id, m));
@@ -59,7 +98,11 @@ export default function ChatWidget({ t, lang }) {
     });
     const max = Math.max(...incoming.map((m) => m.id), 0);
     setLastId((x) => Math.max(x, max));
-  }, []);
+    if (newStaff.length) {
+      if (!open) setUnreadCount((x) => x + newStaff.length);
+      if (!open || document.hidden) playNotificationTone();
+    }
+  }, [open, playNotificationTone]);
 
   const poll = useCallback(async () => {
     const sid = sessionId || localStorage.getItem(STORAGE_KEY);
@@ -79,18 +122,17 @@ export default function ChatWidget({ t, lang }) {
   }, [open, messages]);
 
   useEffect(() => {
-    if (!open) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      return undefined;
-    }
+    const sid = sessionId || localStorage.getItem(STORAGE_KEY);
+    if (!sid) return undefined;
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => {
       poll();
-    }, 2800);
+    }, open ? 2800 : 4200);
     poll();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [open, poll]);
+  }, [open, poll, sessionId]);
 
   const onOpen = async () => {
     setError('');
@@ -107,6 +149,7 @@ export default function ChatWidget({ t, lang }) {
       setMessages(initial || []);
       const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
       setLastId(max);
+      setUnreadCount(0);
       setOpen(true);
     } catch (e) {
       setError(String(e?.message || e));
@@ -167,6 +210,11 @@ export default function ChatWidget({ t, lang }) {
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
         <span className="tg-float-label">{t.chatOpen}</span>
+        {!open && unreadCount > 0 && (
+          <span className="web-chat-unread-badge" aria-label={isRtl ? 'رسائل جديدة' : 'New messages'}>
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
       </button>
 
       {open && (

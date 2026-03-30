@@ -1162,6 +1162,13 @@ function mainMenuKeyboard() {
         { text: '🆔 Chat ID', callback_data: 'menu_chatid' },
       ],
       [
+        { text: '📷 إدارة QR', callback_data: 'menu_qr' },
+        { text: '❔ المساعدة', callback_data: 'menu_help' },
+      ],
+      [
+        { text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' },
+      ],
+      [
         { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
         { text: '📊 الإحصائيات', callback_data: 'menu_stats' },
       ],
@@ -1304,7 +1311,7 @@ async function showTimerMenu(forceChatId = null) {
   );
 }
 
-async function _showSiteMenu(forceChatId = null) {
+async function showSiteMenu(forceChatId = null) {
   const cfg = await loadSiteConfig();
   const maint = cfg.maintenance?.enabled ? '🔴 مفعّل' : '🟢 مطفأ';
   await botSend(
@@ -1615,6 +1622,7 @@ async function handleCallbackQuery(data, incomingChatId) {
 
   if (data === 'menu_rate')  { await showRateMenu(incomingChatId);  return; }
   if (data === 'menu_qr')    { await showQrMenu(incomingChatId);    return; }
+  if (data === 'menu_help')  { await botSend(helpText(), {}, incomingChatId); return; }
   if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
 
@@ -1758,7 +1766,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   // ── Chat ID (single channel) ────────────────────────
   if (data === 'menu_chatid')       { await showChatIdMenu(incomingChatId);       return; }
   if (data === 'menu_site') {
-    await botSend('ℹ️ تم إلغاء قسم الإعدادات. استخدم قسم Chat ID فقط.', { reply_markup: { inline_keyboard: [[{ text: '🆔 Chat ID', callback_data: 'menu_chatid' }], [{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } }, incomingChatId);
+    await showSiteMenu(incomingChatId);
     return;
   }
   // ── Site settings (legacy callbacks; hidden from main menu) ─────────────
@@ -1997,14 +2005,21 @@ async function handleAdminCommand(text, incomingChatId) {
       return;
     }
 
-    setPendingState(incomingChatId, null);
-    // "/set" remains optional: user may send plain value, and we normalize "/set value" internally.
-    const input = raw.replace(/^\/set\s+/i, '').trim();
-    if (!input) {
-      await botSend('❌ أرسل قيمة صحيحة.', { reply_markup: cancelButton() }, incomingChatId);
+    const setValue = raw.startsWith('/set ') ? raw.slice(5).trim() : '';
+    if (!setValue) {
+      await botSend(
+        '❌ الإدخال المباشر معطّل.\n' +
+        'استخدم <code>/set ...</code> قبل أي قيمة.\n' +
+        'مثال: <code>/set 123</code>',
+        { reply_markup: cancelButton() },
+        incomingChatId,
+      );
       setPendingState(incomingChatId, st);
       return;
     }
+
+    setPendingState(incomingChatId, null);
+    const input = setValue;
 
     if (st.action === 'rateFixed') {
       const val = Number(input);
