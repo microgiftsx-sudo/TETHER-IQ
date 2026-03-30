@@ -1599,6 +1599,9 @@ function mainMenuKeyboard() {
         { text: '📈 CRM — زيارات وطلبات', callback_data: 'menu_crm' },
       ],
       [
+        { text: '🛒 الطلبات', callback_data: 'menu_orders' },
+      ],
+      [
         { text: '🚫 المحظورون', callback_data: 'menu_blocked' },
       ],
     ],
@@ -1923,7 +1926,87 @@ async function showBlockedMenu(forceChatId = null) {
   );
 }
 
+async function sendOrderDetailsById(orderId, forceChatId = null) {
+  const all = await loadOrders(ORDERS_CRM_PATH);
+  const o = findOrderByBusinessId(all, orderId);
+  if (!o) {
+    await botSend(`❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(orderId)}</code>`, {}, forceChatId);
+    return;
+  }
+  const visits = await loadVisits(VISITS_PATH);
+  const resolvedIp = resolveOrderIp(o, visits);
+  const st = orderStatusLabelAr(o.status || 'received');
+  const lines = [
+    '🧾 <b>تفاصيل الطلب</b>',
+    `<b>رقم الطلب:</b> <code>${escapeTelegramHtml(o.orderId)}</code>`,
+    `<b>الحالة:</b> ${escapeTelegramHtml(st)}`,
+    `<b>الاسم:</b> ${escapeTelegramHtml(o.name)}`,
+    `<b>USDT:</b> ${escapeTelegramHtml(String(o.usdtAmount))}`,
+    `<b>IQD:</b> ${escapeTelegramHtml(String(o.iqdAmount || ''))}`,
+    `<b>الدفع:</b> ${escapeTelegramHtml(o.paymentMethod)}`,
+    `<b>الشبكة:</b> ${escapeTelegramHtml(o.network || '')}`,
+    o.wallet ? `<b>المحفظة:</b> <code>${escapeTelegramHtml(o.wallet)}</code>` : null,
+    `<b>IP:</b> <code>${escapeTelegramHtml(resolvedIp || '—')}</code>`,
+    `<b>الجهاز:</b> ${escapeTelegramHtml(o.deviceLabel || '—')}`,
+    `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
+    `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
+  ].filter(Boolean);
+  const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
+  const modRows = modKb?.inline_keyboard || [];
+  await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId, modRows) }, forceChatId);
+}
+
+async function showOrdersMenu(forceChatId = null, offset = 0) {
+  const PAGE_SIZE = 12;
+  const all = await loadOrders(ORDERS_CRM_PATH);
+  const newest = [...all].reverse();
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const page = newest.slice(safeOffset, safeOffset + PAGE_SIZE);
+
+  if (!page.length) {
+    await botSend('🛒 لا توجد طلبات لعرضها حالياً.', { reply_markup: { inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]] } }, forceChatId);
+    return;
+  }
+
+  const rows = page.map((o) => {
+    const status = orderStatusLabelAr(o.status || 'received');
+    const text = `${o.orderId} — ${status}`;
+    const tok = makeActionToken('ordv', o.orderId);
+    return [{ text: text.slice(0, 60), callback_data: `ordv:${tok}` }];
+  });
+
+  const navRow = [];
+  if (safeOffset > 0) navRow.push({ text: '⬅️ السابق', callback_data: `ordp:${Math.max(0, safeOffset - PAGE_SIZE)}` });
+  if (safeOffset + PAGE_SIZE < newest.length) navRow.push({ text: 'التالي ➡️', callback_data: `ordp:${safeOffset + PAGE_SIZE}` });
+  if (navRow.length) rows.push(navRow);
+  rows.push([{ text: '🔄 تحديث', callback_data: `ordp:${safeOffset}` }]);
+  rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
+
+  await botSend(
+    `🛒 <b>الطلبات</b>\nالإجمالي: <b>${newest.length}</b>\nالصفحة: ${Math.floor(safeOffset / PAGE_SIZE) + 1}`,
+    { reply_markup: { inline_keyboard: rows } },
+    forceChatId
+  );
+}
+
 async function handleCallbackQuery(data, incomingChatId) {
+  const ordViewCb = String(data || '').match(/^ordv:(.+)$/);
+  if (ordViewCb) {
+    const orderId = readActionToken(ordViewCb[1], 'ordv');
+    if (!orderId) {
+      await botSend('⚠️ انتهت صلاحية زر الطلب. افتح قائمة الطلبات من جديد.', {}, incomingChatId);
+      return;
+    }
+    await sendOrderDetailsById(orderId, incomingChatId);
+    return;
+  }
+
+  const ordPageCb = String(data || '').match(/^ordp:(\d+)$/);
+  if (ordPageCb) {
+    await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0);
+    return;
+  }
+
   const modCb = String(data || '').match(/^mod:(.+)$/);
   if (modCb) {
     const token = modCb[1];
@@ -2215,6 +2298,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   if (data === 'menu_help')  { await botSend(helpText(), {}, incomingChatId); return; }
   if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
+  if (data === 'menu_orders') { await showOrdersMenu(incomingChatId, 0); return; }
   if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId); return; }
   if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId); return; }
   if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId); return; }
@@ -2805,33 +2889,7 @@ async function handleAdminCommand(text, incomingChatId) {
       await botSend('❌ استخدم: <code>/order ORD-XXXX</code> أو <code>/طلب ORD-XXXX</code>', {}, incomingChatId);
       return;
     }
-    const all = await loadOrders(ORDERS_CRM_PATH);
-    const o = findOrderByBusinessId(all, rest);
-    if (!o) {
-      await botSend(`❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(rest)}</code>`, {}, incomingChatId);
-      return;
-    }
-    const visits = await loadVisits(VISITS_PATH);
-    const resolvedIp = resolveOrderIp(o, visits);
-    const st = orderStatusLabelAr(o.status || 'received');
-    const lines = [
-      '🧾 <b>تفاصيل الطلب</b>',
-      `<b>رقم الطلب:</b> <code>${escapeTelegramHtml(o.orderId)}</code>`,
-      `<b>الحالة:</b> ${escapeTelegramHtml(st)}`,
-      `<b>الاسم:</b> ${escapeTelegramHtml(o.name)}`,
-      `<b>USDT:</b> ${escapeTelegramHtml(String(o.usdtAmount))}`,
-      `<b>IQD:</b> ${escapeTelegramHtml(String(o.iqdAmount || ''))}`,
-      `<b>الدفع:</b> ${escapeTelegramHtml(o.paymentMethod)}`,
-      `<b>الشبكة:</b> ${escapeTelegramHtml(o.network || '')}`,
-      o.wallet ? `<b>المحفظة:</b> <code>${escapeTelegramHtml(o.wallet)}</code>` : null,
-      `<b>IP:</b> <code>${escapeTelegramHtml(resolvedIp || '—')}</code>`,
-      `<b>الجهاز:</b> ${escapeTelegramHtml(o.deviceLabel || '—')}`,
-      `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
-      `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
-    ].filter(Boolean);
-    const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
-    const modRows = modKb?.inline_keyboard || [];
-    await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId, modRows) }, incomingChatId);
+    await sendOrderDetailsById(rest, incomingChatId);
     return;
   }
 
