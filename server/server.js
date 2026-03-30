@@ -192,7 +192,7 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
     '',
     '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
   ];
-  const modKb = await moderationInlineKeyboard(clientIp, visitorFingerprint);
+  const modKb = await moderationInlineKeyboard(clientIp, visitorFingerprint, { banOnly: true });
   const { data } = await tgPostJson(botToken, 'sendMessage', {
     chat_id: telegramChatIdForApi(chatId),
     text: lines.join('\n'),
@@ -492,21 +492,36 @@ function readActionToken(token, expectedType) {
   return rec.value;
 }
 
-async function moderationInlineKeyboard(ipRaw, fpRaw) {
+async function moderationInlineKeyboard(ipRaw, fpRaw, options = {}) {
+  const banOnly = Boolean(options?.banOnly);
   const ip = normalizeBlockedIpInput(ipRaw);
   const fp = normalizeFingerprintInput(fpRaw);
   const rows = [];
 
   if (ip) {
     const blockedIp = await getBlockedIpEntry(ip);
-    const t = blockedIp ? makeActionToken('uip', ip) : makeActionToken('bip', ip);
-    rows.push([{ text: blockedIp ? '✅ فك حظر IP' : '🚫 حظر IP', callback_data: `mod:${t}` }]);
+    if (banOnly) {
+      if (!blockedIp) {
+        const t = makeActionToken('bip', ip);
+        rows.push([{ text: '🚫 حظر IP', callback_data: `mod:${t}` }]);
+      }
+    } else {
+      const t = blockedIp ? makeActionToken('uip', ip) : makeActionToken('bip', ip);
+      rows.push([{ text: blockedIp ? '✅ فك حظر IP' : '🚫 حظر IP', callback_data: `mod:${t}` }]);
+    }
   }
 
   if (fp) {
     const blockedFp = await getBlockedFingerprintEntry(fp);
-    const t = blockedFp ? makeActionToken('ufp', fp) : makeActionToken('bfp', fp);
-    rows.push([{ text: blockedFp ? '✅ فك حظر Fingerprint' : '🧬🚫 حظر Fingerprint', callback_data: `mod:${t}` }]);
+    if (banOnly) {
+      if (!blockedFp) {
+        const t = makeActionToken('bfp', fp);
+        rows.push([{ text: '🧬🚫 حظر Fingerprint', callback_data: `mod:${t}` }]);
+      }
+    } else {
+      const t = blockedFp ? makeActionToken('ufp', fp) : makeActionToken('bfp', fp);
+      rows.push([{ text: blockedFp ? '✅ فك حظر Fingerprint' : '🧬🚫 حظر Fingerprint', callback_data: `mod:${t}` }]);
+    }
   }
 
   return rows.length ? { inline_keyboard: rows } : null;
