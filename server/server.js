@@ -99,6 +99,7 @@ const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
 const BLOCKED_IPS_PATH = path.join(DATA_DIR, 'blockedIps.json');
 const BLOCKED_FINGERPRINTS_PATH = path.join(DATA_DIR, 'blockedFingerprints.json');
+const BLOCKED_CHAT_USERS_PATH = path.join(DATA_DIR, 'blockedChatUsers.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
@@ -192,7 +193,7 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
     '',
     '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
   ];
-  const modKb = await moderationInlineKeyboard(clientIp, visitorFingerprint, { banOnly: true });
+  const modKb = await chatModerationInlineKeyboard(visitorFingerprint);
   const { data } = await tgPostJson(botToken, 'sendMessage', {
     chat_id: telegramChatIdForApi(chatId),
     text: lines.join('\n'),
@@ -279,6 +280,7 @@ async function initDataFiles() {
     { name: 'testimonials.json', dest: TESTIMONIALS_PATH },
     { name: 'blockedIps.json', dest: BLOCKED_IPS_PATH },
     { name: 'blockedFingerprints.json', dest: BLOCKED_FINGERPRINTS_PATH },
+    { name: 'blockedChatUsers.json', dest: BLOCKED_CHAT_USERS_PATH },
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
@@ -449,6 +451,41 @@ async function getBlockedFingerprintEntry(fp) {
   return list.find((it) => it.fingerprint === clean) || null;
 }
 
+async function loadBlockedChatUsers() {
+  try {
+    const raw = JSON.parse(await readFile(BLOCKED_CHAT_USERS_PATH, 'utf8'));
+    const list = Array.isArray(raw) ? raw : [];
+    return list
+      .map((it) => ({
+        fingerprint: normalizeFingerprintInput(it?.fingerprint || ''),
+        reason: String(it?.reason || '').trim().slice(0, 200),
+        at: String(it?.at || ''),
+      }))
+      .filter((it) => it.fingerprint);
+  } catch {
+    return [];
+  }
+}
+
+async function saveBlockedChatUsers(list) {
+  const normalized = (Array.isArray(list) ? list : [])
+    .map((it) => ({
+      fingerprint: normalizeFingerprintInput(it?.fingerprint || ''),
+      reason: String(it?.reason || '').trim().slice(0, 200),
+      at: String(it?.at || new Date().toISOString()),
+    }))
+    .filter((it) => it.fingerprint);
+  await writeFile(BLOCKED_CHAT_USERS_PATH, JSON.stringify(normalized, null, 2), 'utf8');
+  return normalized;
+}
+
+async function getBlockedChatUserEntry(fp) {
+  const clean = normalizeFingerprintInput(fp);
+  if (!clean) return null;
+  const list = await loadBlockedChatUsers();
+  return list.find((it) => it.fingerprint === clean) || null;
+}
+
 function blockedViolationPayload(entry) {
   return {
     error: 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.',
@@ -465,6 +502,16 @@ function blockedFingerprintViolationPayload(entry) {
     code: 'FP_BLOCKED',
     messageAr: 'تم حظر هذا الجهاز بسبب مخالفة. يرجى التواصل مع الدعم.',
     messageEn: 'This device fingerprint has been blocked for policy violation. Please contact support.',
+    reason: entry?.reason || 'مخالفة',
+  };
+}
+
+function blockedChatViolationPayload(entry) {
+  return {
+    error: 'تم حظرك من خدمة العملاء. يرجى التواصل عبر القنوات الرسمية.',
+    code: 'CHAT_BLOCKED',
+    messageAr: 'تم حظرك من خدمة العملاء. يرجى التواصل عبر القنوات الرسمية.',
+    messageEn: 'You are blocked from customer support chat. Please contact official channels.',
     reason: entry?.reason || 'مخالفة',
   };
 }
@@ -525,6 +572,19 @@ async function moderationInlineKeyboard(ipRaw, fpRaw, options = {}) {
   }
 
   return rows.length ? { inline_keyboard: rows } : null;
+}
+
+async function chatModerationInlineKeyboard(fpRaw) {
+  const fp = normalizeFingerprintInput(fpRaw);
+  if (!fp) return null;
+  const blocked = await getBlockedChatUserEntry(fp);
+  const token = blocked ? makeActionToken('uch', fp) : makeActionToken('bch', fp);
+  return {
+    inline_keyboard: [[{
+      text: blocked ? '✅ فك حظر خدمة العملاء' : '🚫 حظر من خدمة العملاء',
+      callback_data: `mod:${token}`,
+    }]],
+  };
 }
 
 function resolveOrderIp(orderRow, visits = []) {
@@ -715,6 +775,10 @@ app.post('/api/chat/message', async (req, res) => {
     const blockedFp = await getBlockedFingerprintEntry(visitorFingerprint);
     if (blockedFp) {
       return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    const blockedChatUser = await getBlockedChatUserEntry(visitorFingerprint);
+    if (blockedChatUser) {
+      return res.status(403).json(blockedChatViolationPayload(blockedChatUser));
     }
     await maybeWarnSameIpAsBlockedFingerprint(clientIp, visitorFingerprint);
     if (!sessionId.startsWith('sess_') || text.length < 1 || text.length > 4000) {
@@ -1534,6 +1598,9 @@ function mainMenuKeyboard() {
       [
         { text: '📈 CRM — زيارات وطلبات', callback_data: 'menu_crm' },
       ],
+      [
+        { text: '🚫 المحظورون', callback_data: 'menu_blocked' },
+      ],
     ],
   };
 }
@@ -1773,11 +1840,94 @@ async function showStatsMenu(forceChatId = null) {
   );
 }
 
+async function sendBlockedIpsList(forceChatId = null) {
+  const list = await loadBlockedIps();
+  if (!list.length) {
+    await botSend('✅ لا توجد عناوين IP محظورة حالياً.', {}, forceChatId);
+    return;
+  }
+  const top = list.slice(-20).reverse();
+  const view = top
+    .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
+    .join('\n');
+  const unbanRows = top
+    .slice(0, 10)
+    .map((it) => [{ text: `✅ فك ${it.ip}`, callback_data: `mod:${makeActionToken('uip', it.ip)}` }]);
+  await botSend(
+    `🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`,
+    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    forceChatId
+  );
+}
+
+async function sendBlockedFpsList(forceChatId = null) {
+  const list = await loadBlockedFingerprints();
+  if (!list.length) {
+    await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', {}, forceChatId);
+    return;
+  }
+  const top = list.slice(-20).reverse();
+  const view = top
+    .map((it) => `• <code>${escapeTelegramHtml(it.fingerprint)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}\n  IP snapshot: <code>${escapeTelegramHtml(it.ipSnapshot || '—')}</code>`)
+    .join('\n');
+  const unbanRows = top
+    .slice(0, 10)
+    .map((it) => [{
+      text: `✅ فك ${String(it.fingerprint || '').slice(0, 10)}…`,
+      callback_data: `mod:${makeActionToken('ufp', it.fingerprint)}`,
+    }]);
+  await botSend(
+    `🧬 <b>البصمات المحظورة (آخر 20)</b>\n${view}`,
+    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    forceChatId
+  );
+}
+
+async function sendBlockedChatList(forceChatId = null) {
+  const list = await loadBlockedChatUsers();
+  if (!list.length) {
+    await botSend('✅ لا يوجد محظورون من خدمة العملاء حالياً.', {}, forceChatId);
+    return;
+  }
+  const top = list.slice(-20).reverse();
+  const view = top
+    .map((it) => `• <code>${escapeTelegramHtml(it.fingerprint)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
+    .join('\n');
+  const unbanRows = top
+    .slice(0, 10)
+    .map((it) => [{
+      text: `✅ فك دردشة ${String(it.fingerprint || '').slice(0, 10)}…`,
+      callback_data: `mod:${makeActionToken('uch', it.fingerprint)}`,
+    }]);
+  await botSend(
+    `💬🚫 <b>محظورو خدمة العملاء (آخر 20)</b>\n${view}`,
+    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    forceChatId
+  );
+}
+
+async function showBlockedMenu(forceChatId = null) {
+  await botSend(
+    '🚫 <b>إدارة المحظورين</b>\nاختر الفئة:',
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🌐 محظورو IP', callback_data: 'blocked_ip_list' }],
+          [{ text: '🧬 محظورو Fingerprint', callback_data: 'blocked_fp_list' }],
+          [{ text: '💬 محظورو خدمة العملاء', callback_data: 'blocked_chat_list' }],
+          [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
+        ],
+      },
+    },
+    forceChatId
+  );
+}
+
 async function handleCallbackQuery(data, incomingChatId) {
   const modCb = String(data || '').match(/^mod:(.+)$/);
   if (modCb) {
     const token = modCb[1];
-    const tryTypes = ['bip', 'uip', 'bfp', 'ufp'];
+    const tryTypes = ['bip', 'uip', 'bfp', 'ufp', 'bch', 'uch'];
     let hitType = '';
     let hitValue = '';
     for (const tp of tryTypes) {
@@ -1831,6 +1981,26 @@ async function handleCallbackQuery(data, incomingChatId) {
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedFingerprints(next);
       await botSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'bch') {
+      const fp = normalizeFingerprintInput(hitValue);
+      const list = await loadBlockedChatUsers();
+      if (!list.find((it) => it.fingerprint === fp)) {
+        list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString() });
+        await saveBlockedChatUsers(list);
+      }
+      await botSend(`💬🚫 تم حظر المستخدم من خدمة العملاء:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'uch') {
+      const fp = normalizeFingerprintInput(hitValue);
+      const list = await loadBlockedChatUsers();
+      const next = list.filter((it) => it.fingerprint !== fp);
+      await saveBlockedChatUsers(next);
+      await botSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
       return;
     }
   }
@@ -2045,6 +2215,10 @@ async function handleCallbackQuery(data, incomingChatId) {
   if (data === 'menu_help')  { await botSend(helpText(), {}, incomingChatId); return; }
   if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
+  if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId); return; }
+  if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId); return; }
+  if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId); return; }
+  if (data === 'blocked_chat_list') { await sendBlockedChatList(incomingChatId); return; }
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
@@ -2701,17 +2875,7 @@ async function handleAdminCommand(text, incomingChatId) {
   }
 
   if (trimmed === '/blockedips' || trimmed === '/blocked') {
-    const list = await loadBlockedIps();
-    if (!list.length) {
-      await botSend('✅ لا توجد عناوين IP محظورة حالياً.', {}, incomingChatId);
-      return;
-    }
-    const view = list
-      .slice(-20)
-      .reverse()
-      .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
-      .join('\n');
-    await botSend(`🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`, {}, incomingChatId);
+    await sendBlockedIpsList(incomingChatId);
     return;
   }
 
@@ -2766,17 +2930,7 @@ async function handleAdminCommand(text, incomingChatId) {
   }
 
   if (trimmed === '/blockedfps' || trimmed === '/blockedfp') {
-    const list = await loadBlockedFingerprints();
-    if (!list.length) {
-      await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', {}, incomingChatId);
-      return;
-    }
-    const view = list
-      .slice(-20)
-      .reverse()
-      .map((it) => `• <code>${escapeTelegramHtml(it.fingerprint)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}\n  IP snapshot: <code>${escapeTelegramHtml(it.ipSnapshot || '—')}</code>`)
-      .join('\n');
-    await botSend(`🧬 <b>البصمات المحظورة (آخر 20)</b>\n${view}`, {}, incomingChatId);
+    await sendBlockedFpsList(incomingChatId);
     return;
   }
 
