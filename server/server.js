@@ -100,6 +100,7 @@ const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
 const BLOCKED_IPS_PATH = path.join(DATA_DIR, 'blockedIps.json');
 const BLOCKED_FINGERPRINTS_PATH = path.join(DATA_DIR, 'blockedFingerprints.json');
 const BLOCKED_CHAT_USERS_PATH = path.join(DATA_DIR, 'blockedChatUsers.json');
+const BLOCKED_CHAT_IPS_PATH = path.join(DATA_DIR, 'blockedChatIps.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
@@ -193,7 +194,7 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
     '',
     '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
   ];
-  const modKb = await chatModerationInlineKeyboard(visitorFingerprint);
+  const modKb = await chatModerationInlineKeyboard(visitorFingerprint, clientIp);
   const { data } = await tgPostJson(botToken, 'sendMessage', {
     chat_id: telegramChatIdForApi(chatId),
     text: lines.join('\n'),
@@ -281,6 +282,7 @@ async function initDataFiles() {
     { name: 'blockedIps.json', dest: BLOCKED_IPS_PATH },
     { name: 'blockedFingerprints.json', dest: BLOCKED_FINGERPRINTS_PATH },
     { name: 'blockedChatUsers.json', dest: BLOCKED_CHAT_USERS_PATH },
+    { name: 'blockedChatIps.json', dest: BLOCKED_CHAT_IPS_PATH },
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
@@ -486,6 +488,41 @@ async function getBlockedChatUserEntry(fp) {
   return list.find((it) => it.fingerprint === clean) || null;
 }
 
+async function loadBlockedChatIps() {
+  try {
+    const raw = JSON.parse(await readFile(BLOCKED_CHAT_IPS_PATH, 'utf8'));
+    const list = Array.isArray(raw) ? raw : [];
+    return list
+      .map((it) => ({
+        ip: normalizeBlockedIpInput(it?.ip || ''),
+        reason: String(it?.reason || '').trim().slice(0, 200),
+        at: String(it?.at || ''),
+      }))
+      .filter((it) => it.ip);
+  } catch {
+    return [];
+  }
+}
+
+async function saveBlockedChatIps(list) {
+  const normalized = (Array.isArray(list) ? list : [])
+    .map((it) => ({
+      ip: normalizeBlockedIpInput(it?.ip || ''),
+      reason: String(it?.reason || '').trim().slice(0, 200),
+      at: String(it?.at || new Date().toISOString()),
+    }))
+    .filter((it) => it.ip);
+  await writeFile(BLOCKED_CHAT_IPS_PATH, JSON.stringify(normalized, null, 2), 'utf8');
+  return normalized;
+}
+
+async function getBlockedChatIpEntry(ip) {
+  const clean = normalizeBlockedIpInput(ip);
+  if (!clean) return null;
+  const list = await loadBlockedChatIps();
+  return list.find((it) => it.ip === clean) || null;
+}
+
 function blockedViolationPayload(entry) {
   return {
     error: 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.',
@@ -512,6 +549,16 @@ function blockedChatViolationPayload(entry) {
     code: 'CHAT_BLOCKED',
     messageAr: 'تم حظرك من خدمة العملاء. يرجى التواصل عبر القنوات الرسمية.',
     messageEn: 'You are blocked from customer support chat. Please contact official channels.',
+    reason: entry?.reason || 'مخالفة',
+  };
+}
+
+function blockedChatRouterViolationPayload(entry) {
+  return {
+    error: 'تم حظر هذا الرواتر من خدمة العملاء. يرجى التواصل عبر القنوات الرسمية.',
+    code: 'CHAT_ROUTER_BLOCKED',
+    messageAr: 'تم حظر هذا الرواتر من خدمة العملاء. يرجى التواصل عبر القنوات الرسمية.',
+    messageEn: 'This router (IP) is blocked from customer support chat. Please contact official channels.',
     reason: entry?.reason || 'مخالفة',
   };
 }
@@ -574,17 +621,21 @@ async function moderationInlineKeyboard(ipRaw, fpRaw, options = {}) {
   return rows.length ? { inline_keyboard: rows } : null;
 }
 
-async function chatModerationInlineKeyboard(fpRaw) {
+async function chatModerationInlineKeyboard(fpRaw, ipRaw = '') {
   const fp = normalizeFingerprintInput(fpRaw);
-  if (!fp) return null;
-  const blocked = await getBlockedChatUserEntry(fp);
-  const token = blocked ? makeActionToken('uch', fp) : makeActionToken('bch', fp);
-  return {
-    inline_keyboard: [[{
-      text: blocked ? '✅ فك حظر خدمة العملاء' : '🚫 حظر من خدمة العملاء',
-      callback_data: `mod:${token}`,
-    }]],
-  };
+  const ip = normalizeBlockedIpInput(ipRaw);
+  const rows = [];
+  if (ip) {
+    const blockedIp = await getBlockedChatIpEntry(ip);
+    const tokenIp = blockedIp ? makeActionToken('ucr', ip) : makeActionToken('bcr', ip);
+    rows.push([{ text: blockedIp ? '✅ فك حظر رواتر' : '🚫 حظر رواتر', callback_data: `mod:${tokenIp}` }]);
+  }
+  if (fp) {
+    const blocked = await getBlockedChatUserEntry(fp);
+    const token = blocked ? makeActionToken('uch', fp) : makeActionToken('bch', fp);
+    rows.push([{ text: blocked ? '✅ فك حظر جهاز' : '🚫 حظر جهاز', callback_data: `mod:${token}` }]);
+  }
+  return rows.length ? { inline_keyboard: rows } : null;
 }
 
 function resolveOrderIp(orderRow, visits = []) {
@@ -775,6 +826,10 @@ app.post('/api/chat/message', async (req, res) => {
     const blockedFp = await getBlockedFingerprintEntry(visitorFingerprint);
     if (blockedFp) {
       return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    const blockedChatRouter = await getBlockedChatIpEntry(clientIp);
+    if (blockedChatRouter) {
+      return res.status(403).json(blockedChatRouterViolationPayload(blockedChatRouter));
     }
     const blockedChatUser = await getBlockedChatUserEntry(visitorFingerprint);
     if (blockedChatUser) {
@@ -2010,7 +2065,7 @@ async function handleCallbackQuery(data, incomingChatId) {
   const modCb = String(data || '').match(/^mod:(.+)$/);
   if (modCb) {
     const token = modCb[1];
-    const tryTypes = ['bip', 'uip', 'bfp', 'ufp', 'bch', 'uch'];
+    const tryTypes = ['bip', 'uip', 'bfp', 'ufp', 'bch', 'uch', 'bcr', 'ucr'];
     let hitType = '';
     let hitValue = '';
     for (const tp of tryTypes) {
@@ -2084,6 +2139,26 @@ async function handleCallbackQuery(data, incomingChatId) {
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedChatUsers(next);
       await botSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'bcr') {
+      const ip = normalizeBlockedIpInput(hitValue);
+      const list = await loadBlockedChatIps();
+      if (!list.find((it) => it.ip === ip)) {
+        list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
+        await saveBlockedChatIps(list);
+      }
+      await botSend(`🚫 تم حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'ucr') {
+      const ip = normalizeBlockedIpInput(hitValue);
+      const list = await loadBlockedChatIps();
+      const next = list.filter((it) => it.ip !== ip);
+      await saveBlockedChatIps(next);
+      await botSend(`✅ تم فك حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
       return;
     }
   }
