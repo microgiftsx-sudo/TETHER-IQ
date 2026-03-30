@@ -68,12 +68,22 @@ export default function BuyPage() {
     setLoading(true);
     getPaymentDetails()
       .then((d) => mounted && setDetails(d))
-      .catch((e) => mounted && setError(String(e?.message || e)))
+      .catch((e) => {
+        if (!mounted) return;
+        if (e?.code === 'IP_BLOCKED') {
+          const localized = lang === 'en'
+            ? (e?.messageEn || e?.message || 'This IP has been blocked for policy violation. Please contact support.')
+            : (e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.');
+          setError(localized);
+          return;
+        }
+        setError(String(e?.message || e));
+      })
       .finally(() => mounted && setLoading(false));
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [lang]);
 
   const expiresAtMs = useMemo(() => {
     const mins = Number(details?.paymentExpiryMinutes || 15);
@@ -183,9 +193,10 @@ export default function BuyPage() {
       } else if (e?.code === 'KYC_ACK_REQUIRED') {
         setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
       } else if (e?.code === 'IP_BLOCKED') {
-        const ar = String(e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة.');
-        const en = String(e?.messageEn || 'This IP has been blocked for policy violation.');
-        setError(`${ar}\n${en}`);
+        const localized = lang === 'en'
+          ? (e?.messageEn || e?.message || 'This IP has been blocked for policy violation. Please contact support.')
+          : (e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.');
+        setError(localized);
       } else {
         setError(String(e?.message || e));
       }

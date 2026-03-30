@@ -16,13 +16,23 @@ async function jsonFetch(path, options) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     let msg = text;
+    let code;
+    let messageAr;
+    let messageEn;
     try {
       const j = JSON.parse(text);
       if (j.error) msg = j.error;
+      if (j.code) code = j.code;
+      if (j.messageAr) messageAr = j.messageAr;
+      if (j.messageEn) messageEn = j.messageEn;
     } catch {
       /* keep text */
     }
-    throw new Error(msg || `Request failed: ${res.status}`);
+    const err = new Error(msg || `Request failed: ${res.status}`);
+    if (code) err.code = code;
+    if (messageAr) err.messageAr = messageAr;
+    if (messageEn) err.messageEn = messageEn;
+    throw err;
   }
   return res.json();
 }
