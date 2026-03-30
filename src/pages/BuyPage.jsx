@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
 import { createOrder, getPaymentDetails } from '../api';
@@ -8,14 +8,13 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 
 function useCountdown(targetMs) {
-  const now = useSyncExternalStore(
-    (cb) => {
-      const t = setInterval(cb, 250);
-      return () => clearInterval(t);
-    },
-    () => Date.now(),
-    () => 0,
-  );
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+
   const remainingMs = Math.max(0, targetMs - now);
   const totalSeconds = Math.floor(remainingMs / 1000);
   const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
