@@ -4,6 +4,7 @@ import { createChatSession, sendChatMessage, fetchChatMessages } from '../api';
 const STORAGE_KEY = 'web_chat_session_id';
 const NAME_KEY = 'web_chat_visitor_name';
 const LOCK_KEY = 'web_chat_name_locked';
+const SEEN_KEY_PREFIX = 'web_chat_seen_msg_id_';
 
 export default function ChatWidget({ t, lang }) {
   const isRtl = lang === 'ar';
@@ -20,11 +21,34 @@ export default function ChatWidget({ t, lang }) {
   const listRef = useRef(null);
   const pollRef = useRef(null);
   const lastIdRef = useRef(0);
+  const seenIdRef = useRef(0);
   const audioCtxRef = useRef(null);
+
+  const seenKeyFor = useCallback((sid) => `${SEEN_KEY_PREFIX}${sid}`, []);
+  const readSeenId = useCallback((sid) => {
+    const key = seenKeyFor(sid);
+    const n = Number(localStorage.getItem(key) || 0);
+    return Number.isFinite(n) ? n : 0;
+  }, [seenKeyFor]);
+  const writeSeenId = useCallback((sid, id) => {
+    const safe = Number.isFinite(Number(id)) ? Number(id) : 0;
+    seenIdRef.current = safe;
+    try {
+      localStorage.setItem(seenKeyFor(sid), String(safe));
+    } catch {
+      // ignore storage failures
+    }
+  }, [seenKeyFor]);
 
   useEffect(() => {
     lastIdRef.current = lastId;
   }, [lastId]);
+
+  useEffect(() => {
+    const sid = sessionId || localStorage.getItem(STORAGE_KEY);
+    if (!sid) return;
+    seenIdRef.current = readSeenId(sid);
+  }, [sessionId, readSeenId]);
 
   const playNotificationTone = useCallback(() => {
     try {
@@ -89,7 +113,8 @@ export default function ChatWidget({ t, lang }) {
 
   const mergeIncoming = useCallback((incoming) => {
     if (!incoming?.length) return;
-    const newSinceLast = incoming.filter((m) => Number(m.id) > Number(lastIdRef.current || 0));
+    const minId = Math.max(Number(lastIdRef.current || 0), Number(seenIdRef.current || 0));
+    const newSinceLast = incoming.filter((m) => Number(m.id) > minId);
     const newStaff = newSinceLast.filter((m) => m.role === 'staff');
     setMessages((prev) => {
       const byId = new Map(prev.map((m) => [m.id, m]));
@@ -150,6 +175,7 @@ export default function ChatWidget({ t, lang }) {
       const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
       setLastId(max);
       setUnreadCount(0);
+      writeSeenId(sid, max);
       setOpen(true);
     } catch (e) {
       setError(String(e?.message || e));
@@ -166,10 +192,13 @@ export default function ChatWidget({ t, lang }) {
       setSessionId(newId);
       setMessages([]);
       setLastId(0);
+      writeSeenId(newId, 0);
+      setUnreadCount(0);
       const { messages: initial } = await fetchChatMessages(newId, 0);
       setMessages(initial || []);
       const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
       setLastId(max);
+      writeSeenId(newId, max);
     } catch (e) {
       setError(String(e?.message || e));
     } finally {
@@ -196,6 +225,15 @@ export default function ChatWidget({ t, lang }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!open) return;
+    const sid = sessionId || localStorage.getItem(STORAGE_KEY);
+    if (!sid || !messages.length) return;
+    const max = Math.max(...messages.map((m) => Number(m.id) || 0), 0);
+    setUnreadCount(0);
+    writeSeenId(sid, max);
+  }, [open, messages, sessionId, writeSeenId]);
 
   return (
     <>
