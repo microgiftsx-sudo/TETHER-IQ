@@ -18,6 +18,18 @@ export default function Header({ t, lang, toggleLang, links }) {
   }, [mobileOpen]);
 
   useEffect(() => {
+    const MOBILE_BREAKPOINT = 900;
+    const onResize = () => {
+      if (window.innerWidth > MOBILE_BREAKPOINT) {
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (mobileOpen) return undefined;
     const onScroll = () => {
       const y = Math.max(0, window.scrollY || 0);
       const prev = lastScrollYRef.current;
@@ -60,7 +72,7 @@ export default function Header({ t, lang, toggleLang, links }) {
     announcementHiddenRef.current = announcementHidden;
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [announcementHidden]);
+  }, [announcementHidden, mobileOpen]);
 
   const navLinks = [
     { label: t.navHome, href: '#hero' },
@@ -86,9 +98,11 @@ export default function Header({ t, lang, toggleLang, links }) {
     setMobileOpen(false);
   };
 
+  const effectiveAnnouncementHidden = mobileOpen || announcementHidden;
+
   return (
     <header className="header-sticky">
-      <div className={`header-announcement${announcementHidden ? ' header-announcement--hidden' : ''}`}>
+      <div className={`header-announcement${effectiveAnnouncementHidden ? ' header-announcement--hidden' : ''}`}>
         {t.announcement}
       </div>
 
