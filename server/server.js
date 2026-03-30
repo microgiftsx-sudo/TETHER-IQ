@@ -104,6 +104,7 @@ const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
 const chatPostLimiter = new Map();
 const suspiciousIpAlertLimiter = new Map();
+const actionTokenStore = new Map(); // token -> { type, value, exp }
 
 function chatRateOk(req) {
   const ip = String(req.ip || req.socket?.remoteAddress || 'anon').replace(/^::ffff:/, '');
@@ -191,10 +192,12 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
     '',
     '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
   ];
+  const modKb = await moderationInlineKeyboard(clientIp, visitorFingerprint);
   const { data } = await tgPostJson(botToken, 'sendMessage', {
     chat_id: telegramChatIdForApi(chatId),
     text: lines.join('\n'),
     parse_mode: 'HTML',
+    ...(modKb ? { reply_markup: modKb } : {}),
   });
   if (!data?.ok || !data?.result?.message_id) return null;
   return data.result.message_id;
@@ -466,6 +469,49 @@ function blockedFingerprintViolationPayload(entry) {
   };
 }
 
+function makeActionToken(type, value, ttlMs = 30 * 60 * 1000) {
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.slice(0, 14);
+  actionTokenStore.set(token, { type, value: String(value || ''), exp: Date.now() + ttlMs });
+  if (actionTokenStore.size > 5000) {
+    const now = Date.now();
+    for (const [k, v] of actionTokenStore) {
+      if (!v || v.exp < now) actionTokenStore.delete(k);
+    }
+  }
+  return token;
+}
+
+function readActionToken(token, expectedType) {
+  const rec = actionTokenStore.get(String(token || ''));
+  if (!rec) return null;
+  if (rec.exp < Date.now()) {
+    actionTokenStore.delete(String(token || ''));
+    return null;
+  }
+  if (expectedType && rec.type !== expectedType) return null;
+  return rec.value;
+}
+
+async function moderationInlineKeyboard(ipRaw, fpRaw) {
+  const ip = normalizeBlockedIpInput(ipRaw);
+  const fp = normalizeFingerprintInput(fpRaw);
+  const rows = [];
+
+  if (ip) {
+    const blockedIp = await getBlockedIpEntry(ip);
+    const t = blockedIp ? makeActionToken('uip', ip) : makeActionToken('bip', ip);
+    rows.push([{ text: blockedIp ? '✅ فك حظر IP' : '🚫 حظر IP', callback_data: `mod:${t}` }]);
+  }
+
+  if (fp) {
+    const blockedFp = await getBlockedFingerprintEntry(fp);
+    const t = blockedFp ? makeActionToken('ufp', fp) : makeActionToken('bfp', fp);
+    rows.push([{ text: blockedFp ? '✅ فك حظر Fingerprint' : '🧬🚫 حظر Fingerprint', callback_data: `mod:${t}` }]);
+  }
+
+  return rows.length ? { inline_keyboard: rows } : null;
+}
+
 function resolveOrderIp(orderRow, visits = []) {
   const direct = normalizeBlockedIpInput(orderRow?.ip || '');
   if (direct) return direct;
@@ -522,6 +568,7 @@ async function maybeWarnSameIpAsBlockedFingerprint(clientIp, currentFingerprint)
   if (now - last < 10 * 60 * 1000) return;
   suspiciousIpAlertLimiter.set(key, now);
 
+  const modKb = await moderationInlineKeyboard(ip, fp);
   await botSend(
     [
       '⚠️ <b>تحذير اشتباه (IP مشترك مع بصمة محظورة)</b>',
@@ -530,7 +577,8 @@ async function maybeWarnSameIpAsBlockedFingerprint(clientIp, currentFingerprint)
       `البصمة المحظورة على نفس IP: <code>${escapeTelegramHtml(hit.fingerprint)}</code>`,
       `السبب: <b>${escapeTelegramHtml(hit.reason || 'مخالفة')}</b>`,
       '<i>قد يكون نفس الشخص يستخدم جهازًا مختلفًا.</i>',
-    ].join('\n')
+    ].join('\n'),
+    modKb ? { reply_markup: modKb } : {}
   );
 }
 
@@ -922,7 +970,7 @@ async function computeRate(details) {
 }
 
 /** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc: + orderId (لا يتعارض مع قوائم أخرى). */
-function orderInlineKeyboard(businessOrderId) {
+function orderInlineKeyboard(businessOrderId, extraRows = []) {
   const oidFull = String(businessOrderId || '').trim();
   const enc = (actionLetter) => {
     const prefix = `o${actionLetter}:`;
@@ -939,6 +987,7 @@ function orderInlineKeyboard(businessOrderId) {
         { text: '📁 أرشفة', callback_data: enc('a') },
         { text: '❌ إلغاء الطلب', callback_data: enc('c') },
       ],
+      ...extraRows,
     ],
   };
 }
@@ -1017,6 +1066,14 @@ app.get('/api/payment-details', async (_req, res) => {
     if (blocked) {
       return res.status(403).json(blockedViolationPayload(blocked));
     }
+    const visitorFingerprint = normalizeFingerprintInput(
+      _req.headers['x-visitor-id'] || _req.query?.visitorId || ''
+    );
+    const blockedFp = await getBlockedFingerprintEntry(visitorFingerprint);
+    if (blockedFp) {
+      return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+    }
+    await maybeWarnSameIpAsBlockedFingerprint(clientIp, visitorFingerprint);
     const details = await loadPaymentDetails();
     const rate = await computeRate(details);
     res.json(buildPublicPaymentPayload(details, rate));
@@ -1153,11 +1210,13 @@ app.post('/api/order', async (req, res) => {
       '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
     ].filter(Boolean);
 
+    const modKb = await moderationInlineKeyboard(clientIp, visitorId);
+    const modRows = modKb?.inline_keyboard || [];
     const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: telegramChatIdForApi(chatId),
       text: lines.join('\n'),
       parse_mode: 'HTML',
-      reply_markup: orderInlineKeyboard(safeOrderId),
+      reply_markup: orderInlineKeyboard(safeOrderId, modRows),
     });
 
     if (!tgOrder?.ok) {
@@ -1700,6 +1759,67 @@ async function showStatsMenu(forceChatId = null) {
 }
 
 async function handleCallbackQuery(data, incomingChatId) {
+  const modCb = String(data || '').match(/^mod:(.+)$/);
+  if (modCb) {
+    const token = modCb[1];
+    const tryTypes = ['bip', 'uip', 'bfp', 'ufp'];
+    let hitType = '';
+    let hitValue = '';
+    for (const tp of tryTypes) {
+      const val = readActionToken(token, tp);
+      if (val) {
+        hitType = tp;
+        hitValue = val;
+        break;
+      }
+    }
+    if (!hitType || !hitValue) {
+      await botSend('⚠️ انتهت صلاحية الزر. أعد إرسال /order أو انتظر رسالة جديدة.', {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'bip') {
+      const ip = normalizeBlockedIpInput(hitValue);
+      const list = await loadBlockedIps();
+      if (!list.find((it) => it.ip === ip)) {
+        list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
+        await saveBlockedIps(list);
+      }
+      await botSend(`🚫 تم حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'uip') {
+      const ip = normalizeBlockedIpInput(hitValue);
+      const list = await loadBlockedIps();
+      const next = list.filter((it) => it.ip !== ip);
+      await saveBlockedIps(next);
+      await botSend(`✅ تم فك حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'bfp') {
+      const fp = normalizeFingerprintInput(hitValue);
+      const list = await loadBlockedFingerprints();
+      if (!list.find((it) => it.fingerprint === fp)) {
+        const ipSnapshot = await findRecentIpByFingerprint(fp);
+        list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString(), ipSnapshot });
+        await saveBlockedFingerprints(list);
+      }
+      await botSend(`🧬🚫 تم حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (hitType === 'ufp') {
+      const fp = normalizeFingerprintInput(hitValue);
+      const list = await loadBlockedFingerprints();
+      const next = list.filter((it) => it.fingerprint !== fp);
+      await saveBlockedFingerprints(next);
+      await botSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      return;
+    }
+  }
+
   // ── Order status (inline buttons on new orders) ─────
   const orderCb = String(data).match(/^o([dac]):(.+)$/);
   if (orderCb) {
@@ -2520,7 +2640,9 @@ async function handleAdminCommand(text, incomingChatId) {
       `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
       `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
     ].filter(Boolean);
-    await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId) }, incomingChatId);
+    const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
+    const modRows = modKb?.inline_keyboard || [];
+    await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId, modRows) }, incomingChatId);
     return;
   }
 

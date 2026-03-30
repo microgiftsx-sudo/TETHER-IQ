@@ -4,12 +4,23 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 const DEFAULT_FETCH_MS = 22000;
 
+function readVisitorId() {
+  try {
+    const v = localStorage.getItem('visitor_id') || '';
+    return String(v).trim().slice(0, 120);
+  } catch {
+    return '';
+  }
+}
+
 async function jsonFetch(path, options) {
+  const visitorId = readVisitorId();
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     signal: options?.signal ?? AbortSignal.timeout(DEFAULT_FETCH_MS),
     headers: {
       'Content-Type': 'application/json',
+      ...(visitorId ? { 'X-Visitor-Id': visitorId } : {}),
       ...(options?.headers || {}),
     },
   });
