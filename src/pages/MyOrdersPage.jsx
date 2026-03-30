@@ -79,20 +79,20 @@ export default function MyOrdersPage() {
               <p>{t.myOrdersEmpty}</p>
             </div>
           ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            <ul className="my-orders-list-executive" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {orders.map((o) => (
                 <li key={o.orderId} className="my-orders-list__row" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                  <div>
-                    <div className="text-accent" style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
+                  <div className="my-orders-row-info">
+                    <div className="text-accent my-orders-row-id" style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>
                       {o.orderId}
                     </div>
-                    <div className="text-muted text-sm">
+                    <div className="text-muted text-sm my-orders-row-meta">
                       {o.usdt ? `${o.usdt} USDT · ` : ''}{t.myOrdersSavedAt}: {formatSavedAt(o.at, lang)}
                     </div>
                   </div>
                   <Link
                     to={`/track?order=${encodeURIComponent(o.orderId)}`}
-                    className="btn btn-primary"
+                    className="btn btn-primary my-orders-track-btn"
                     style={{ fontSize: '0.9rem', padding: '0.45rem 1rem' }}
                   >
                     {t.myOrdersTrack}
@@ -103,7 +103,7 @@ export default function MyOrdersPage() {
           )}
         </div>
 
-        <div className="mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+        <div className="mt-6 my-orders-home-action" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <Link to="/" className="btn btn-outline">{t.legalBackHome}</Link>
         </div>
       </main>

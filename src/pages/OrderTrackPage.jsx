@@ -277,15 +277,15 @@ export default function OrderTrackPage() {
             )}
 
             {data && (
-              <div className="no-print" style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+              <div className="no-print order-track-export-actions" style={{ marginTop: '1.25rem', textAlign: 'center' }}>
                 <button
                   type="button"
-                  className="btn btn-outline"
+                  className="btn btn-primary order-track-export-btn"
                   onClick={() => window.print()}
                 >
                   {t.trackInvoicePrint}
                 </button>
-                <p className="text-muted text-xs mt-2" style={{ maxWidth: 360, margin: '0.5rem auto 0' }}>
+                <p className="text-muted text-xs mt-2 order-track-export-hint" style={{ maxWidth: 420, margin: '0.5rem auto 0' }}>
                   {t.trackInvoicePrintHint}
                 </p>
               </div>

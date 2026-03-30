@@ -990,7 +990,18 @@ footer.glass-panel.site-footer {
   margin-top: 1rem;
 }
 
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
 @media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+
   .no-print {
     display: none !important;
   }
@@ -1005,10 +1016,6 @@ footer.glass-panel.site-footer {
     display: none !important;
   }
 
-  body {
-    background: #fff !important;
-  }
-
   .page-shell {
     background: #fff !important;
     min-height: auto !important;
@@ -1020,9 +1027,44 @@ footer.glass-panel.site-footer {
     border: 1px solid #e2e8f0 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
-    padding: 1.5rem !important;
+    border-radius: 12px !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 1.2rem 1.1rem !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .invoice-pro-print {
+    margin-bottom: 0.9rem !important;
+  }
+
+  .invoice-pro-logo {
+    max-height: 34px !important;
+  }
+
+  .invoice-pro-doc {
+    font-size: 1rem !important;
+    margin-top: 0.1rem !important;
+  }
+
+  .invoice-pro-id.mono {
+    font-size: 0.88rem !important;
+    margin-top: 0.15rem !important;
+  }
+
+  .invoice-pro-rule {
+    margin-top: 0.7rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  .order-track-details {
+    gap: 0.45rem !important;
+    font-size: 0.9rem !important;
+  }
+
+  .order-track-row {
+    padding-bottom: 0.38rem !important;
   }
 
   .order-track-badge--processing {
@@ -2582,6 +2624,40 @@ h3 { font-size: 1.25rem; }
   min-height: 44px;
 }
 
+.order-track-page-executive .order-track-card {
+  max-width: 680px;
+  border-radius: 16px;
+}
+
+.order-track-page-executive .order-track-badge {
+  border-radius: 10px;
+  padding-inline: 0.85rem;
+  font-size: 0.8rem;
+}
+
+.order-track-page-executive .order-track-subtitle {
+  color: rgba(203, 213, 225, 0.9);
+}
+
+.order-track-page-executive .order-track-export-actions {
+  margin-top: 1.5rem !important;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.24);
+}
+
+.order-track-page-executive .order-track-export-btn {
+  min-width: 210px;
+  min-height: 46px;
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.order-track-page-executive .order-track-export-hint {
+  color: rgba(148, 163, 184, 0.95);
+  line-height: 1.6;
+}
+
 /* Unified executive style: my orders page */
 .my-orders-page-executive .my-orders-page__title {
   color: #dbeafe;
@@ -2606,6 +2682,67 @@ h3 { font-size: 1.25rem; }
 
 .my-orders-page-executive .my-orders-list__row {
   border-bottom-color: rgba(148, 163, 184, 0.18);
+  padding-block: 1rem;
+  gap: 1rem;
+}
+
+.my-orders-page-executive .my-orders-list-executive {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.my-orders-page-executive .my-orders-row-info {
+  min-width: 0;
+}
+
+.my-orders-page-executive .my-orders-row-id {
+  color: #7dd3fc;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  word-break: break-all;
+}
+
+.my-orders-page-executive .my-orders-row-meta {
+  margin-top: 0.3rem;
+  color: rgba(203, 213, 225, 0.88);
+  line-height: 1.55;
+}
+
+.my-orders-page-executive .my-orders-track-btn {
+  min-width: 108px;
+  min-height: 40px;
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  align-self: center;
+}
+
+.my-orders-page-executive .my-orders-home-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.my-orders-page-executive .my-orders-home-action .btn {
+  border-radius: 10px;
+  min-height: 44px;
+  padding-inline: 1.2rem;
+}
+
+@media (max-width: 680px) {
+  .my-orders-page-executive .my-orders-list__row {
+    align-items: flex-start;
+  }
+
+  .my-orders-page-executive .my-orders-track-btn {
+    min-width: 92px;
+    min-height: 36px;
+    font-size: 0.82rem !important;
+    padding: 0.35rem 0.75rem !important;
+  }
+
+  .my-orders-page-executive .my-orders-home-action {
+    justify-content: center;
+  }
 }
 
 .copy-btn {
