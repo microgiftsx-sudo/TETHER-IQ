@@ -12,20 +12,58 @@ const PRUNE_ORDERS = 8000;
 
 const visitDedupe = new Map(); // key -> lastMs
 
+function normalizeIp(raw) {
+  let ip = String(raw || '').trim();
+  if (!ip) return '';
+  if (ip.includes(',')) ip = ip.split(',')[0].trim();
+  ip = ip.replace(/^::ffff:/, '');
+  if (ip.startsWith('[') && ip.endsWith(']')) ip = ip.slice(1, -1);
+  return ip;
+}
+
+function isPrivateOrLocalIp(ip) {
+  if (!ip) return true;
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+  if (/^(10)\./.test(ip)) return true;
+  if (/^(192)\.(168)\./.test(ip)) return true;
+  if (/^(172)\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return true;
+  if (/^(169)\.(254)\./.test(ip)) return true;
+  if (/^(100)\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip)) return true; // CGNAT
+  if (/^(fc|fd|fe80):/i.test(ip)) return true;
+  return false;
+}
+
+function parseForwardedHeader(val) {
+  const s = String(val || '');
+  if (!s) return [];
+  const out = [];
+  const parts = s.split(',');
+  for (const p of parts) {
+    const m = p.match(/for=([^;]+)/i);
+    if (m?.[1]) out.push(normalizeIp(m[1].replace(/^"|"$/g, '')));
+  }
+  return out.filter(Boolean);
+}
+
 /** Real client IP (Cloudflare / reverse proxy). Express req.ip needs trust proxy. */
 export function getClientIpFromRequest(req) {
-  if (!req || !req.headers) {
-    const raw = req?.ip || req?.socket?.remoteAddress || '';
-    return String(raw).replace(/^::ffff:/, '');
-  }
-  const cf = req.headers['cf-connecting-ip'];
-  if (cf && typeof cf === 'string') return cf.split(',')[0].trim();
-  const real = req.headers['x-real-ip'];
-  if (real && typeof real === 'string') return real.split(',')[0].trim();
-  const xff = req.headers['x-forwarded-for'];
-  if (xff && typeof xff === 'string') return xff.split(',')[0].trim();
-  const raw = req.ip || req.socket?.remoteAddress || '';
-  return String(raw).replace(/^::ffff:/, '');
+  const headers = req?.headers || {};
+  const candidates = [
+    headers['cf-connecting-ip'],
+    headers['x-real-ip'],
+    headers['x-client-ip'],
+    headers['x-forwarded-for'],
+    ...parseForwardedHeader(headers.forwarded),
+    req?.ip,
+    req?.socket?.remoteAddress,
+  ]
+    .flatMap((v) => String(v || '').split(','))
+    .map((v) => normalizeIp(v))
+    .filter(Boolean);
+
+  const publicIp = candidates.find((ip) => !isPrivateOrLocalIp(ip));
+  if (publicIp) return publicIp;
+  return candidates[0] || '';
 }
 
 export function classifyDevice(userAgent) {
@@ -114,6 +152,7 @@ function normalizeOrderRow(o) {
     iqdAmount: o.iqdAmount || '',
     paymentDetail: o.paymentDetail || '',
     senderNumber: o.senderNumber || '',
+    ip: String(o.ip || '').slice(0, 45),
   };
 }
 
@@ -199,6 +238,7 @@ export async function appendOrderEvent(ordersPath, rec) {
     wallet: String(rec.wallet || '').slice(0, 120),
     paymentDetail: String(rec.paymentDetail || '').slice(0, 200),
     senderNumber: String(rec.senderNumber || '').slice(0, 20),
+    ip: String(rec.ip || '').slice(0, 45),
   });
   list.push(row);
   await saveOrders(ordersPath, pruneOrders(list));
