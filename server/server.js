@@ -403,8 +403,30 @@ function blockedViolationPayload(entry) {
     code: 'IP_BLOCKED',
     messageAr: 'تم حظر هذا العنوان بسبب مخالفة. يرجى التواصل مع الدعم.',
     messageEn: 'This IP has been blocked for policy violation. Please contact support.',
-    reason: entry?.reason || 'policy_violation',
+    reason: entry?.reason || 'مخالفة',
   };
+}
+
+function resolveOrderIp(orderRow, visits = []) {
+  const direct = normalizeBlockedIpInput(orderRow?.ip || '');
+  if (direct) return direct;
+
+  const visitorId = String(orderRow?.visitorId || '').trim();
+  if (visitorId.startsWith('ip:')) {
+    const fromVisitor = normalizeBlockedIpInput(visitorId.slice(3));
+    if (fromVisitor) return fromVisitor;
+  }
+
+  if (visitorId) {
+    for (let i = visits.length - 1; i >= 0; i -= 1) {
+      const v = visits[i];
+      if (String(v?.visitorId || '') !== visitorId) continue;
+      const ip = normalizeBlockedIpInput(v?.ip || '');
+      if (ip) return ip;
+    }
+  }
+
+  return '';
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -533,20 +555,76 @@ app.post('/api/chat/message', async (req, res) => {
   }
 });
 
+function isLocalOrPrivateIp(ip) {
+  const s = String(ip || '').trim().replace(/^::ffff:/, '');
+  if (!s) return true;
+  if (s === '127.0.0.1' || s === '::1' || s === 'localhost') return true;
+  if (/^(10)\./.test(s)) return true;
+  if (/^(192)\.(168)\./.test(s)) return true;
+  if (/^(172)\.(1[6-9]|2\d|3[0-1])\./.test(s)) return true;
+  if (/^(169)\.(254)\./.test(s)) return true;
+  if (/^(100)\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(s)) return true;
+  if (/^(fc|fd|fe80):/i.test(s)) return true;
+  return false;
+}
+
+async function fetchJsonWithTimeout(url, ms = 3500) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(ms) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 async function fetchGeoIp(ip) {
-  if (!ip || ip === '127.0.0.1' || ip === '::1') return { country: 'Local', city: '', countryCode: '' };
-  try {
-    const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,city`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    const d = await res.json();
-    if (d.status === 'success') {
-      return { country: d.country, city: d.city || '', countryCode: d.countryCode || '' };
-    }
-  } catch (e) {
-     
-    console.error('GeoIP fetch failed', e?.message || e);
+  const cleanIp = String(ip || '').trim().replace(/^::ffff:/, '');
+  if (isLocalOrPrivateIp(cleanIp)) {
+    return { country: 'Local', city: '', countryCode: '' };
   }
+
+  const providers = [
+    async () => {
+      const d = await fetchJsonWithTimeout(`https://ipwho.is/${encodeURIComponent(cleanIp)}`);
+      if (!d?.success) return null;
+      return {
+        country: String(d.country || ''),
+        city: String(d.city || ''),
+        countryCode: String(d.country_code || ''),
+      };
+    },
+    async () => {
+      const d = await fetchJsonWithTimeout(`https://ipapi.co/${encodeURIComponent(cleanIp)}/json/`);
+      if (d?.error) return null;
+      return {
+        country: String(d.country_name || ''),
+        city: String(d.city || ''),
+        countryCode: String(d.country_code || ''),
+      };
+    },
+    async () => {
+      const d = await fetchJsonWithTimeout(`https://ip-api.com/json/${encodeURIComponent(cleanIp)}?fields=status,country,countryCode,city`);
+      if (d?.status !== 'success') return null;
+      return {
+        country: String(d.country || ''),
+        city: String(d.city || ''),
+        countryCode: String(d.countryCode || ''),
+      };
+    },
+  ];
+
+  for (const lookup of providers) {
+    try {
+      const loc = await lookup();
+      if (loc?.country) {
+        return {
+          country: loc.country.slice(0, 80),
+          city: loc.city.slice(0, 80),
+          countryCode: loc.countryCode.slice(0, 4),
+        };
+      }
+    } catch {
+      // try next provider
+    }
+  }
+
   return { country: 'Unknown', city: '', countryCode: '' };
 }
 
@@ -1100,7 +1178,7 @@ function helpText() {
     'عند طلب جديد: أزرار «تم الإكمال / أرشفة / إلغاء» تظهر للعميل في صفحة التتبع.',
     '',
     '🚫 حظر IP:',
-    '/banip 1.2.3.4 سبب — حظر عنوان IP',
+    '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
     '/unbanip 1.2.3.4 — فك الحظر',
     '/blockedips — عرض آخر عناوين محظورة',
     '',
@@ -2293,6 +2371,8 @@ async function handleAdminCommand(text, incomingChatId) {
       await botSend(`❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(rest)}</code>`, {}, incomingChatId);
       return;
     }
+    const visits = await loadVisits(VISITS_PATH);
+    const resolvedIp = resolveOrderIp(o, visits);
     const st = orderStatusLabelAr(o.status || 'received');
     const lines = [
       '🧾 <b>تفاصيل الطلب</b>',
@@ -2304,7 +2384,7 @@ async function handleAdminCommand(text, incomingChatId) {
       `<b>الدفع:</b> ${escapeTelegramHtml(o.paymentMethod)}`,
       `<b>الشبكة:</b> ${escapeTelegramHtml(o.network || '')}`,
       o.wallet ? `<b>المحفظة:</b> <code>${escapeTelegramHtml(o.wallet)}</code>` : null,
-      `<b>IP:</b> <code>${escapeTelegramHtml(o.ip || '—')}</code>`,
+      `<b>IP:</b> <code>${escapeTelegramHtml(resolvedIp || '—')}</code>`,
       `<b>الجهاز:</b> ${escapeTelegramHtml(o.deviceLabel || '—')}`,
       `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
       `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
@@ -2321,7 +2401,7 @@ async function handleAdminCommand(text, incomingChatId) {
       await botSend('❌ استخدم: <code>/banip 1.2.3.4 سبب</code>', {}, incomingChatId);
       return;
     }
-    const reason = reasonParts.join(' ').trim().slice(0, 200) || 'manual_block';
+    const reason = reasonParts.join(' ').trim().slice(0, 200) || 'مخالفة';
     const list = await loadBlockedIps();
     const exists = list.find((it) => it.ip === ip);
     if (exists) {
@@ -2361,7 +2441,7 @@ async function handleAdminCommand(text, incomingChatId) {
     const view = list
       .slice(-20)
       .reverse()
-      .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'policy_violation')}`)
+      .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
       .join('\n');
     await botSend(`🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`, {}, incomingChatId);
     return;

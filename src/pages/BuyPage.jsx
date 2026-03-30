@@ -182,6 +182,10 @@ export default function BuyPage() {
         setError(isRtl ? e.message : (e.errorEn || e.message));
       } else if (e?.code === 'KYC_ACK_REQUIRED') {
         setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
+      } else if (e?.code === 'IP_BLOCKED') {
+        const ar = String(e?.messageAr || e?.message || 'تم حظر هذا العنوان بسبب مخالفة.');
+        const en = String(e?.messageEn || 'This IP has been blocked for policy violation.');
+        setError(`${ar}\n${en}`);
       } else {
         setError(String(e?.message || e));
       }
@@ -291,13 +295,6 @@ export default function BuyPage() {
                     </option>
                   ))}
                 </select>
-                {!loading && !paymentMethodOptions.length && (
-                  <p className="text-error text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl
-                      ? 'لا توجد طرق دفع مفعّلة للبروفايل النشط. تحقّق من Chat ID والبيانات في لوحة البوت.'
-                      : 'No payment methods are enabled for the active profile. Check Chat ID and payment data in the bot panel.'}
-                  </p>
-                )}
               </div>
               <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>

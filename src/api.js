@@ -43,11 +43,15 @@ export async function createOrder(payload) {
     let msg = text;
     let code;
     let errorEn;
+    let messageAr;
+    let messageEn;
     try {
       const j = JSON.parse(text);
       if (j.error) msg = j.error;
       if (j.code) code = j.code;
       if (j.errorEn) errorEn = j.errorEn;
+      if (j.messageAr) messageAr = j.messageAr;
+      if (j.messageEn) messageEn = j.messageEn;
       if (j.telegramDescription) {
         msg = msg ? `${msg} — ${j.telegramDescription}` : j.telegramDescription;
       }
@@ -60,6 +64,8 @@ export async function createOrder(payload) {
     const err = new Error(msg || `Request failed: ${res.status}`);
     if (code) err.code = code;
     if (errorEn) err.errorEn = errorEn;
+    if (messageAr) err.messageAr = messageAr;
+    if (messageEn) err.messageEn = messageEn;
     throw err;
   }
   return JSON.parse(text);
