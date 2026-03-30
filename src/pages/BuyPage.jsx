@@ -194,9 +194,9 @@ export default function BuyPage() {
     return (
       <div className="page-shell">
         <Header t={t} lang={lang} toggleLang={toggleLang} />
-        <main className="buy-page-main">
+        <main className="buy-page-main buy-page-executive">
           <section className="container py-10" style={{ maxWidth: 900 }}>
-            <div className="glass-panel w-full text-center" style={{ padding: '3rem 2rem', border: '2px solid var(--accent-primary)' }}>
+            <div className="glass-panel w-full text-center buy-success-card-executive" style={{ padding: '3rem 2rem', border: '2px solid var(--accent-primary)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '1rem', lineHeight: 1 }}>
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent-primary)' }}>
                   <path d="M20 7L9 18l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -239,9 +239,9 @@ export default function BuyPage() {
   return (
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
-      <main className="buy-page-main">
-      <section className="container py-10" style={{ maxWidth: 900 }}>
-      <div className="glass-panel buy-panel" style={{ padding: '1.75rem', border: '1px solid var(--accent-primary)' }}>
+      <main className="buy-page-main buy-page-executive">
+      <section className="container py-10 buy-executive-shell" style={{ maxWidth: 900 }}>
+      <div className="glass-panel buy-panel buy-panel-executive" style={{ padding: '1.75rem', border: '1px solid var(--accent-primary)' }}>
             <div className="buy-header mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <div className="buy-title-wrap">
             <h2 className="text-accent mb-1">{isRtl ? 'تفاصيل الدفع' : 'Payment Details'}</h2>
@@ -340,7 +340,7 @@ export default function BuyPage() {
             </div>
 
             {stage === 2 && (
-            <div className="instruction-card" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
+            <div className="instruction-card buy-instruction-card-executive" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
               <h3 className="text-accent mb-3" style={{ fontSize: '1rem' }}>{t.confirmPayment}</h3>
 
               {paymentMethod === 'FastPay' && (

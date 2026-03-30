@@ -170,10 +170,10 @@ export default function OrderTrackPage() {
       <div className="no-print">
         <Header t={t} lang={lang} toggleLang={toggleLang} />
       </div>
-      <main className="buy-page-main">
+      <main className="buy-page-main order-track-page-executive">
         <section className="container py-10">
           <div
-            className="order-track-card glass-panel order-invoice-shell"
+            className="order-track-card glass-panel order-invoice-shell order-invoice-shell-executive"
             id="order-invoice"
             dir={isRtl ? 'rtl' : 'ltr'}
           >

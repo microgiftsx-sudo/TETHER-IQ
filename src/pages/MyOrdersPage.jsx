@@ -64,13 +64,13 @@ export default function MyOrdersPage() {
   return (
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
-      <main id="main-content" className="container py-10 static-content-page" style={{ maxWidth: 680 }} tabIndex={-1}>
+      <main id="main-content" className="container py-10 static-content-page my-orders-page-executive" style={{ maxWidth: 680 }} tabIndex={-1}>
         <div className="my-orders-page__intro" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <h1 className="my-orders-page__title">{t.myOrdersTitle}</h1>
           <p className="text-muted text-sm" style={{ margin: '0.35rem 0 0' }}>{t.myOrdersSubtitle}</p>
         </div>
 
-        <div className="glass-panel static-content-card my-orders-card">
+        <div className="glass-panel static-content-card my-orders-card my-orders-card-executive">
           {!orders.length ? (
             <div className="my-orders-empty-state" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
               <div className="my-orders-empty-state__icon" aria-hidden>

@@ -2480,6 +2480,134 @@ h3 { font-size: 1.25rem; }
   margin-top: 1.5rem;
 }
 
+/* Executive minimalist style for Buy page */
+.buy-page-executive .buy-panel-executive {
+  background: linear-gradient(180deg, rgba(9, 16, 27, 0.96), rgba(6, 12, 22, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+  border-radius: 14px;
+}
+
+.buy-page-executive .buy-header {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  margin-bottom: 1.1rem !important;
+}
+
+.buy-page-executive .buy-timer {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+}
+
+.buy-page-executive .buy-instruction-card-executive {
+  background: rgba(10, 15, 25, 0.7) !important;
+  border: 1px solid rgba(148, 163, 184, 0.26) !important;
+  border-radius: 12px !important;
+}
+
+.buy-page-executive .input-control {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  color: #e2e8f0;
+}
+
+.buy-page-executive .input-control:focus {
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.15);
+}
+
+.buy-page-executive .input-label {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.buy-page-executive .buy-actions .btn {
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.buy-page-executive .btn.btn-primary {
+  background: linear-gradient(135deg, #18c3e0, #0d7db6);
+  color: #04111f;
+}
+
+.buy-page-executive .buy-success-card-executive {
+  background: linear-gradient(180deg, rgba(9, 16, 27, 0.96), rgba(6, 12, 22, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  border-radius: 14px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.buy-page-executive .buy-success-card-executive .text-accent {
+  color: #dbeafe;
+}
+
+/* Unified executive style: order tracking + invoice */
+.order-track-page-executive .order-invoice-shell-executive {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(9, 16, 27, 0.96), rgba(6, 12, 22, 0.98));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.order-track-page-executive .order-track-title,
+.order-track-page-executive .invoice-card-brand-name {
+  color: #dbeafe;
+}
+
+.order-track-page-executive .invoice-card-brand {
+  border-bottom-color: rgba(148, 163, 184, 0.2);
+}
+
+.order-track-page-executive .order-track-row {
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.order-track-page-executive .order-track-icon,
+.order-track-page-executive .order-track-value-mono {
+  color: #7dd3fc;
+}
+
+.order-track-page-executive .order-track-notify {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+.order-track-page-executive .order-track-actions .btn {
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+/* Unified executive style: my orders page */
+.my-orders-page-executive .my-orders-page__title {
+  color: #dbeafe;
+}
+
+.my-orders-card-executive {
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(180deg, rgba(9, 16, 27, 0.96), rgba(6, 12, 22, 0.98));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.my-orders-page-executive .my-orders-empty-state {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.my-orders-page-executive .my-orders-empty-state__icon {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+}
+
+.my-orders-page-executive .my-orders-list__row {
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
 .copy-btn {
   background: transparent;
   color: var(--text-secondary);
