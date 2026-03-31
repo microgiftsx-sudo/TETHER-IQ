@@ -192,7 +192,6 @@ export default function BuyPage() {
   const ccBrand = isCreditCard ? detectCardBrand(cardNumberDigits) : { key: 'unknown', labelAr: '', labelEn: '' };
   const formattedCardNumber = isCreditCard ? formatCardNumber(cardNumberDigits) : '';
   const cardCvvDigitsOnly = isCreditCard ? String(cardCvv || '').replace(/\D/g, '').slice(0, 3) : '';
-  const hasCvcInput = isCreditCard ? String(cardCvv || '').trim().length > 0 : false;
 
   const canSendCard = Boolean(
     isCreditCard &&
@@ -528,8 +527,7 @@ export default function BuyPage() {
             </div>
 
             {stage === 2 && (
-            <div className="instruction-card buy-instruction-card-executive" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
-              <h3 className="text-accent mb-3" style={{ fontSize: '1rem' }}>{t.confirmPayment}</h3>
+            <>
               {paymentMethod === 'FastPay' && (
                 <div className="text-center">
                   <p className="text-sm mb-4">{t.fastPayInstructions}</p>
@@ -717,7 +715,7 @@ export default function BuyPage() {
                   {copied === 'mc-num' && <div className="copy-toast">{isRtl ? 'تم النسخ' : 'Copied'}</div>}
                 </div>
               )}
-            </div>
+            </>
             )}
 
             {stage === 2 && (
@@ -827,6 +825,8 @@ export default function BuyPage() {
                       </label>
                       <input
                         className="input-control"
+                        name="cc-name"
+                        autoComplete="cc-name"
                         value={cardHolderName}
                         onChange={(e) => setCardHolderName(e.target.value)}
                         placeholder={isRtl ? 'كما هو مكتوب على البطاقة' : 'As on card'}
@@ -840,6 +840,8 @@ export default function BuyPage() {
                       </label>
                       <input
                         className="input-control"
+                        name="cc-number"
+                        autoComplete="cc-number"
                         value={cardNumber}
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         placeholder={isRtl ? 'مثال: 4111 1111 1111 1111' : 'e.g. 4111 1111 1111 1111'}
@@ -855,6 +857,8 @@ export default function BuyPage() {
                       </label>
                       <input
                         className="input-control"
+                        name="cc-exp"
+                        autoComplete="cc-exp"
                         value={cardExpiry}
                         onChange={(e) => setCardExpiry(formatExpiryInput(e.target.value))}
                         placeholder="MM/YY"
@@ -864,22 +868,13 @@ export default function BuyPage() {
                     </div>
 
                     <div className="input-group buy-span-2">
-                      <label className="input-label cc-cvv-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                        <span>{isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}</span>
-                        <span
-                          className={
-                            `cc-cvv-indicator` +
-                            (cardCvvValid ? ' cc-cvv-indicator--ok' : '') +
-                            (!cardCvvValid && hasCvcInput ? ' cc-cvv-indicator--active' : '')
-                          }
-                        >
-                          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                            <path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5 7 13 7 13s7-8 7-13c0-3.87-3.13-7-7-7zm0 8.5c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-                          </svg>
-                        </span>
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
                       </label>
                       <input
                         className="input-control"
+                        name="cc-csc"
+                        autoComplete="cc-csc"
                         value={cardCvv}
                         onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
                         placeholder="XXX"
