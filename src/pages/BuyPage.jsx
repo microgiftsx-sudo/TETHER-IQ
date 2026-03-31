@@ -530,17 +530,6 @@ export default function BuyPage() {
             {stage === 2 && (
             <div className="instruction-card buy-instruction-card-executive" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
               <h3 className="text-accent mb-3" style={{ fontSize: '1rem' }}>{t.confirmPayment}</h3>
-              {paymentMethod === 'CreditCard' && (
-                <div className="text-center">
-                  <p className="text-error text-sm mb-2">
-                    {isRtl ? 'لن يتم خصم فعليًا من البطاقة.' : 'No real charge will be made to your card.'}
-                  </p>
-                  <p className="text-muted text-sm" style={{ lineHeight: 1.6, margin: 0 }}>
-                    {isRtl ? 'عند الضغط على إرسال سيتم إرسال كود تحقق إلى البوت، وبعد إدخاله تكتمل العملية في الموقع.' : 'Press Send to receive a verification code in the bot. Enter it to complete the process.'}
-                  </p>
-                </div>
-              )}
-
               {paymentMethod === 'FastPay' && (
                 <div className="text-center">
                   <p className="text-sm mb-4">{t.fastPayInstructions}</p>
@@ -969,9 +958,6 @@ export default function BuyPage() {
                     </div>
                   )}
 
-                  <div className="cc-otp-hint">
-                    {isRtl ? 'الزائر: ارسل هذا الكود للإدارة' : 'Visitor: send this code to the admin'}
-                  </div>
                 </div>
               </div>
             )}
