@@ -801,7 +801,16 @@ export default function BuyPage() {
                           style={{ textAlign: 'left' }}
                         />
                         <span className={`cc-input-badge cc-input-badge--${cardBrand}`} aria-hidden="true">
-                          {cardBrand === 'visa' ? 'VISA' : cardBrand === 'mc' ? 'MC' : 'CARD'}
+                          {cardBrand === 'visa' ? (
+                            <span className="cc-logo-visa">VISA</span>
+                          ) : cardBrand === 'mc' ? (
+                            <span className="cc-logo-mc">
+                              <i />
+                              <i />
+                            </span>
+                          ) : (
+                            <span className="cc-logo-card" />
+                          )}
                         </span>
                       </div>
                     </div>
@@ -828,7 +837,7 @@ export default function BuyPage() {
                       </label>
                       <div className="cc-input-wrap">
                         <input
-                          className="input-control cc-input-control"
+                          className="input-control"
                           name="cc-csc"
                           autoComplete="cc-csc"
                           value={cardCvv}
@@ -838,9 +847,6 @@ export default function BuyPage() {
                           inputMode="text"
                           style={{ textAlign: 'left' }}
                         />
-                        <span className={`cc-input-badge cc-input-badge--cvc ${cardCvv ? 'cc-input-badge--active' : ''}`} aria-hidden="true">
-                          123
-                        </span>
                       </div>
                     </div>
                   </>
