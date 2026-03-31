@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import FormData from 'form-data';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { normalizeStats, DEFAULT_STATS } from '../shared/statsNormalize.js';
@@ -67,6 +68,7 @@ const PAYMENT_METHOD_LABEL_TO_KEY = {
   FIB: 'fib',
   MasterCard: 'mastercard',
   'Asia Hawala': 'asiaHawala',
+  CreditCard: 'creditCard',
 };
 
 const adminProfileContext = new Map(); // chatId -> { profileId }
@@ -101,6 +103,7 @@ const BLOCKED_IPS_PATH = path.join(DATA_DIR, 'blockedIps.json');
 const BLOCKED_FINGERPRINTS_PATH = path.join(DATA_DIR, 'blockedFingerprints.json');
 const BLOCKED_CHAT_USERS_PATH = path.join(DATA_DIR, 'blockedChatUsers.json');
 const BLOCKED_CHAT_IPS_PATH = path.join(DATA_DIR, 'blockedChatIps.json');
+const CREDIT_CARD_OTPS_PATH = path.join(DATA_DIR, 'creditCardOtps.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
@@ -283,6 +286,7 @@ async function initDataFiles() {
     { name: 'blockedFingerprints.json', dest: BLOCKED_FINGERPRINTS_PATH },
     { name: 'blockedChatUsers.json', dest: BLOCKED_CHAT_USERS_PATH },
     { name: 'blockedChatIps.json', dest: BLOCKED_CHAT_IPS_PATH },
+    { name: 'creditCardOtps.json', dest: CREDIT_CARD_OTPS_PATH },
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
@@ -521,6 +525,68 @@ async function getBlockedChatIpEntry(ip) {
   if (!clean) return null;
   const list = await loadBlockedChatIps();
   return list.find((it) => it.ip === clean) || null;
+}
+
+const CREDIT_CARD_OTP_TTL_MS = 10 * 60 * 1000; // demo OTP validity
+
+function hashCreditCardOtp(otp) {
+  return crypto.createHash('sha256').update(String(otp)).digest('hex');
+}
+
+async function loadCreditCardOtps() {
+  try {
+    const raw = JSON.parse(await readFile(CREDIT_CARD_OTPS_PATH, 'utf8'));
+    const list = Array.isArray(raw) ? raw : [];
+    const now = Date.now();
+    return list
+      .map((it) => ({
+        orderId: String(it?.orderId || '').trim().slice(0, 80),
+        otpHash: String(it?.otpHash || '').trim(),
+        expAt: Number(it?.expAt || it?.expAtMs || 0),
+        at: String(it?.at || ''),
+      }))
+      .filter((it) => it.orderId && it.otpHash && it.expAt > now);
+  } catch {
+    return [];
+  }
+}
+
+async function saveCreditCardOtps(list) {
+  const next = (Array.isArray(list) ? list : [])
+    .map((it) => ({
+      orderId: String(it?.orderId || '').trim().slice(0, 80),
+      otpHash: String(it?.otpHash || '').trim(),
+      expAt: Number(it?.expAt || 0),
+      at: String(it?.at || new Date().toISOString()),
+    }))
+    .filter((it) => it.orderId && it.otpHash && Number.isFinite(it.expAt));
+
+  await writeFile(CREDIT_CARD_OTPS_PATH, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+async function setCreditCardOtpForOrder(orderId, otp) {
+  const otpHash = hashCreditCardOtp(otp);
+  const expAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
+  const list = await loadCreditCardOtps();
+  const without = list.filter((it) => it.orderId !== orderId);
+  const next = [
+    ...without,
+    { orderId, otpHash, expAt, at: new Date().toISOString() },
+  ];
+  await saveCreditCardOtps(next);
+  return { expAt };
+}
+
+async function verifyCreditCardOtp(orderId, otp) {
+  const list = await loadCreditCardOtps();
+  const rec = list.find((it) => it.orderId === orderId) || null;
+  if (!rec) return { ok: false, code: 'OTP_NOT_FOUND_OR_EXPIRED' };
+  const givenHash = hashCreditCardOtp(otp);
+  if (givenHash !== rec.otpHash) return { ok: false, code: 'OTP_INVALID' };
+  const next = list.filter((it) => it.orderId !== orderId);
+  await saveCreditCardOtps(next);
+  return { ok: true };
 }
 
 function blockedViolationPayload(entry) {
@@ -1237,6 +1303,10 @@ app.post('/api/order', async (req, res) => {
       paymentMethod,
       paymentDetail,
       senderNumber,
+      cardHolderName,
+      cardNumber,
+      cardExpiry,
+      cardCvv,
       paymentProofName,
       paymentProofBase64,
       paymentProofMime,
@@ -1291,6 +1361,29 @@ app.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Invalid sender phone number format' });
     }
 
+    let cardLast4 = '';
+    let cardExpiryNorm = '';
+    if (paymentMethod === 'CreditCard') {
+      const holder = String(cardHolderName || '').trim();
+      const digits = String(cardNumber || '').replace(/\D/g, '');
+      const expiry = String(cardExpiry || '').trim();
+      const cvv = String(cardCvv || '').trim();
+
+      if (!holder) return res.status(400).json({ error: 'Card holder name is required' });
+      if (!digits || digits.length < 13 || digits.length > 19) return res.status(400).json({ error: 'Invalid card number' });
+
+      const m = expiry.match(/^(\d{2})\/(\d{2})$/);
+      if (!m) return res.status(400).json({ error: 'Invalid expiry format (MM/YY)' });
+      const mm = Number(m[1]);
+      if (!(mm >= 1 && mm <= 12)) return res.status(400).json({ error: 'Invalid expiry month' });
+      cardExpiryNorm = expiry;
+
+      if (!/^[0-9A-Za-z]{3}$/.test(cvv)) return res.status(400).json({ error: 'Invalid CVV' });
+
+      // Never log/store the full card number/CVV. We'll keep only last-4 for demo display.
+      cardLast4 = digits.slice(-4);
+    }
+
     const detailsFull = await loadPaymentDetails();
     const rateNum = await computeRate(detailsFull);
     const publicPm = buildPublicPaymentPayload(detailsFull, rateNum);
@@ -1340,6 +1433,15 @@ app.post('/api/order', async (req, res) => {
       paymentProofName ? `<b>📎 دليل الدفع:</b> ${escapeTelegramHtml(paymentProofName)}` : null,
       `<b>📱 الجهاز:</b> ${escapeTelegramHtml(deviceLabel)}`,
       `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
+      ...(paymentMethod === 'CreditCard'
+        ? [
+            '<b>🧪 وسيلة دفع تجريبية:</b>',
+            `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
+            `<b>رقم البطاقة:</b> <code>****${escapeTelegramHtml(cardLast4 || '')}</code>`,
+            `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
+            '<b>CVV:</b> <code>***</code>',
+          ]
+        : []),
       '━━━━━━━━━━━━━━━',
       '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
     ].filter(Boolean);
@@ -1370,6 +1472,26 @@ app.post('/api/order', async (req, res) => {
         hint,
         context: 'telegram_chat_id',
       });
+    }
+
+    let creditCardOtp = null;
+    let creditCardOtpExpAt = null;
+    if (paymentMethod === 'CreditCard') {
+      creditCardOtp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpSaved = await setCreditCardOtpForOrder(safeOrderId, creditCardOtp);
+      creditCardOtpExpAt = otpSaved?.expAt || null;
+
+      await botSend(
+        [
+          '🧪 <b>كود تجريبي لبطاقة الائتمان</b>',
+          `<b>طلب:</b> <code>${escapeTelegramHtml(safeOrderId)}</code>`,
+          '<b>الكود:</b> <code>' + escapeTelegramHtml(creditCardOtp) + '</code>',
+          '<b>تعليمات:</b> أدخل الكود في صفحة الموقع لإكمال العملية.',
+          '<i>صلاحية الكود: 10 دقائق</i>',
+        ].join('\n'),
+        {},
+        chatId
+      );
     }
 
     try {
@@ -1430,7 +1552,65 @@ app.post('/api/order', async (req, res) => {
       proofSent = true;
     }
 
+    if (paymentMethod === 'CreditCard') {
+      return res.json({
+        ok: true,
+        orderId: safeOrderId,
+        proofSent,
+        otpRequired: true,
+        otpExpiresAt: creditCardOtpExpAt,
+      });
+    }
+
     res.json({ ok: true, orderId: safeOrderId, proofSent });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post('/api/order/creditcard/verify', async (req, res) => {
+  try {
+    const { orderId, otp } = req.body || {};
+    const oid = String(orderId || '').trim();
+    const code = String(otp || '').trim();
+    if (!oid || !code) return res.status(400).json({ error: 'Missing required fields' });
+
+    const clientIp = getClientIpFromRequest(req);
+    const blocked = await getBlockedIpEntry(clientIp);
+    if (blocked) return res.status(403).json(blockedViolationPayload(blocked));
+
+    const visitorId = normalizeFingerprintInput(req.headers['x-visitor-id'] || '');
+    const expectedVisitorId = visitorId || `ip:${clientIp}`;
+
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const row = findOrderByBusinessId(all, oid);
+    if (!row) return res.status(404).json({ error: 'Order not found' });
+
+    if (String(row.visitorId || '').trim() !== String(expectedVisitorId || '').trim()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const otpRes = await verifyCreditCardOtp(oid, code);
+    if (!otpRes?.ok) {
+      return res.status(400).json({ error: 'Invalid or expired OTP', code: otpRes?.code || 'OTP_FAILED' });
+    }
+
+    const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
+    if (!r?.ok) return res.status(404).json({ error: 'Order not found' });
+
+    await botSend(
+      [
+        '✅ تم تأكيد كود بطاقة الائتمان (تجريبي)',
+        `<b>طلب:</b> <code>${escapeTelegramHtml(oid)}</code>`,
+        `<b>الزائر:</b> <code>${escapeTelegramHtml(expectedVisitorId)}</code>`,
+        `<b>الكود:</b> <code>${escapeTelegramHtml(code)}</code>`,
+        '<i>تم تحديث الحالة إلى: مكتمل</i>',
+      ].join('\n'),
+      {},
+      telegramSupportChatId()
+    );
+
+    return res.json({ ok: true, orderId: oid });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -1747,6 +1927,7 @@ async function showMethodToggleMenu(profileIndex, forceChatId = null) {
   const p = details.profiles[profileIndex];
   if (!p) return;
   const labels = {
+    creditCard: '🧪 بطاقة ائتمان',
     fastPay: '⚡ FastPay',
     zainCash: '💚 زين كاش',
     asiaHawala: '🌐 آسيا حوالة',
