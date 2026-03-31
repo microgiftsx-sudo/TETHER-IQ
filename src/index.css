@@ -3060,6 +3060,32 @@ h3 { font-size: 1.25rem; }
   100% { transform: scale(1); opacity: 1; }
 }
 
+.cc-otp-reject {
+  border-color: rgba(248, 113, 113, 0.38);
+}
+
+.cc-otp-cross {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 0.9rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(248, 113, 113, 0.98);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  animation: ccRejectShake 0.55s ease;
+}
+
+@keyframes ccRejectShake {
+  0% { transform: translateX(0); opacity: 0; }
+  25% { transform: translateX(-4px); opacity: 1; }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-3px); }
+  100% { transform: translateX(0); }
+}
+
 .cc-cvv-indicator--active {
   /* already defined earlier in this file if present; keep safe */
 }
