@@ -2930,26 +2930,15 @@ h3 { font-size: 1.25rem; }
 }
 
 /* Credit card OTP submission/waiting design */
-.cc-otp-panel {
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: linear-gradient(180deg, rgba(9, 16, 27, 0.86), rgba(6, 12, 22, 0.97));
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
-  padding: 1.15rem 1.05rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.cc-otp-panel::before {
-  content: '';
-  position: absolute;
-  inset: -45% -30%;
-  background: radial-gradient(circle at 20% 25%, rgba(0, 229, 255, 0.18), transparent 50%);
-  pointer-events: none;
+.cc-otp-card {
+  border-radius: 18px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: linear-gradient(145deg, rgba(8, 20, 36, 0.98), rgba(4, 12, 26, 0.98));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+  padding: 1.25rem 1.1rem;
 }
 
 .cc-otp-title {
-  position: relative;
   text-align: center;
   font-weight: 900;
   color: rgba(219, 234, 254, 0.98);
@@ -2958,9 +2947,36 @@ h3 { font-size: 1.25rem; }
 
 .cc-otp-sub {
   text-align: center;
-  color: rgba(203, 213, 225, 0.92);
-  font-size: 0.92rem;
-  margin-bottom: 0.2rem;
+  color: rgba(203, 213, 225, 0.9);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.cc-otp-label {
+  margin-top: 0.35rem;
+}
+
+.cc-otp-input-wrap {
+  position: relative;
+}
+
+.cc-otp-input {
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(2, 8, 23, 0.7);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.cc-otp-input:focus {
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
+.cc-otp-exp {
+  margin-top: 0.55rem;
+  color: rgba(148, 163, 184, 0.95);
+  font-size: 0.86rem;
 }
 
 .cc-otp-code-box {
@@ -2989,11 +3005,11 @@ h3 { font-size: 1.25rem; }
 }
 
 .cc-otp-await {
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: linear-gradient(180deg, rgba(9, 16, 27, 0.86), rgba(6, 12, 22, 0.97));
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
-  padding: 1.35rem 1.05rem;
+  border-radius: 18px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: linear-gradient(145deg, rgba(8, 20, 36, 0.98), rgba(4, 12, 26, 0.98));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+  padding: 1.3rem 1.05rem;
   text-align: center;
 }
 

