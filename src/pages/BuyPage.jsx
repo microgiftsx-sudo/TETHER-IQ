@@ -728,36 +728,6 @@ export default function BuyPage() {
                 {isCreditCard && (
                   <div className="cc-preview-shell buy-span-2">
                     <div className="cc-preview">
-                      <div className="cc-preview-top">
-                        <div className={`cc-brand-icon ${cardNumberDigits ? 'cc-brand-icon--animate' : ''}`}>
-                          {ccBrand.key === 'visa' && (
-                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
-                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
-                              <text x="60" y="48" textAnchor="middle" fontSize="34" fontFamily="Arial" fill="currentColor" fontWeight="700">VISA</text>
-                            </svg>
-                          )}
-                          {ccBrand.key === 'mastercard' && (
-                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
-                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
-                              <circle cx="50" cy="38" r="18" fill="rgba(235,87,87,0.95)" />
-                              <circle cx="70" cy="38" r="18" fill="rgba(245,203,87,0.95)" />
-                              <text x="60" y="52" textAnchor="middle" fontSize="18" fontFamily="Arial" fill="white" fontWeight="700">MC</text>
-                            </svg>
-                          )}
-                          {ccBrand.key === 'amex' && (
-                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
-                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
-                              <text x="60" y="48" textAnchor="middle" fontSize="28" fontFamily="Arial" fill="currentColor" fontWeight="700">AMEX</text>
-                            </svg>
-                          )}
-                          {ccBrand.key === 'unknown' && (
-                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
-                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
-                              <text x="60" y="48" textAnchor="middle" fontSize="22" fontFamily="Arial" fill="currentColor" fontWeight="700">CARD</text>
-                            </svg>
-                          )}
-                        </div>
-                      </div>
                       <div className="cc-preview-number">
                         {formattedCardNumber || '•••• •••• •••• ••••'}
                       </div>
@@ -773,7 +743,17 @@ export default function BuyPage() {
                           </div>
                         </div>
                       </div>
-                      <div className={`cc-preview-progress ${cardNumberDigits ? 'cc-preview-progress--active' : ''}`} />
+                      <div className={`cc-preview-progress ${cardNumberDigits ? 'cc-preview-progress--active' : ''}`}>
+                        <span className="cc-preview-progress-brand">
+                          {ccBrand.key === 'visa'
+                            ? 'VISA'
+                            : ccBrand.key === 'mastercard'
+                              ? 'MC'
+                              : ccBrand.key === 'amex'
+                                ? 'AMEX'
+                                : ''}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -801,7 +781,7 @@ export default function BuyPage() {
                         className="input-control"
                         value={paymentDetail}
                         onChange={(e) => setPaymentDetail(e.target.value)}
-                        placeholder={isRtl ? 'مثال: اسم المحول، رقم إيصال...' : 'e.g. sender name, receipt #...'}
+                        placeholder={isRtl ? 'اسم المحول، رقم إيصال...' : 'sender name, receipt #...'}
                         style={{ textAlign: isRtl ? 'right' : 'left' }}
                       />
                     </div>
@@ -851,7 +831,7 @@ export default function BuyPage() {
                         autoComplete="cc-number"
                         value={cardNumber}
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                        placeholder={isRtl ? 'مثال: 4111 1111 1111 1111' : 'e.g. 4111 1111 1111 1111'}
+                        placeholder="4111 1111 1111 1111"
                         inputMode="numeric"
                         dir="ltr"
                         style={{ textAlign: 'left' }}
@@ -948,7 +928,7 @@ export default function BuyPage() {
                     className="input-control"
                     value={otpCode}
                     onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 6))}
-                    placeholder={isRtl ? 'مثال: 12345' : 'e.g. 12345'}
+                    placeholder="12345"
                     dir="ltr"
                     inputMode="numeric"
                     style={{ textAlign: 'left' }}

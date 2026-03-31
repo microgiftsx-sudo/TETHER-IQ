@@ -2800,36 +2800,10 @@ h3 { font-size: 1.25rem; }
   position: relative;
 }
 
-.cc-preview-top {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.cc-brand-icon {
-  color: rgba(125, 211, 252, 0.95);
-  filter: drop-shadow(0 10px 22px rgba(0, 229, 255, 0.12));
-}
-
-.cc-brand-icon--animate {
-  animation: ccBrandPulse 1.2s ease-in-out infinite;
-}
-
-@keyframes ccBrandPulse {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
 .cc-preview-number {
-  margin-top: 0.9rem;
+  margin-top: 0.2rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 1.15rem;
+  font-size: 1.18rem;
   letter-spacing: 0.18em;
   color: rgba(219, 234, 254, 0.98);
   word-break: break-word;
@@ -2866,11 +2840,15 @@ h3 { font-size: 1.25rem; }
 
 .cc-preview-progress {
   position: relative;
-  height: 3px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(125, 211, 252, 0.12);
-  margin-top: 0.85rem;
+  margin-top: 0.95rem;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-inline: 0.5rem;
 }
 
 .cc-preview-progress::after {
@@ -2884,6 +2862,16 @@ h3 { font-size: 1.25rem; }
 
 .cc-preview-progress--active::after {
   animation: ccProgressMove 1.0s linear infinite;
+}
+
+.cc-preview-progress-brand {
+  position: relative;
+  z-index: 1;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: rgba(125, 211, 252, 0.98);
+  text-transform: uppercase;
 }
 
 @keyframes ccProgressMove {
