@@ -99,6 +99,17 @@ export function verifyCreditCardOtp(orderId, otp) {
   });
 }
 
+export function submitCreditCardOtp(orderId, otp) {
+  return jsonFetch('/api/order/creditcard/submit', {
+    method: 'POST',
+    body: JSON.stringify({ orderId, otp }),
+  });
+}
+
+export function fetchCreditCardOtpDecision(submissionId) {
+  return jsonFetch(`/api/order/creditcard/decision?submissionId=${encodeURIComponent(submissionId)}`);
+}
+
 export function fetchOrderStatus(orderId) {
   return jsonFetch(`/api/order-status?orderId=${encodeURIComponent(orderId)}`);
 }

