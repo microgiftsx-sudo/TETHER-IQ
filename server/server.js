@@ -1834,7 +1834,14 @@ async function improveTelegramTextWithAi(mode, inputText) {
     throw new Error('GEMINI_API_KEY not set');
   }
 
-  const model = String(process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim();
+  const preferredModel = String(process.env.GEMINI_MODEL || '').trim();
+  const modelCandidates = [
+    preferredModel,
+    'gemini-flash-latest',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro-latest',
+  ].filter(Boolean);
   const safeText = String(inputText || '').trim().slice(0, 4000);
   if (!safeText) throw new Error('Empty text');
 
@@ -1853,32 +1860,43 @@ async function improveTelegramTextWithAi(mode, inputText) {
     safeText,
   ].join('\n');
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 800,
+  let lastError = 'Unknown AI error';
+  for (const model of modelCandidates) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': apiKey,
       },
-    }),
-    signal: AbortSignal.timeout(25000),
-  });
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 800,
+        },
+      }),
+      signal: AbortSignal.timeout(25000),
+    });
 
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    const err = data?.error?.message || `HTTP ${resp.status}`;
-    throw new Error(err);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      lastError = data?.error?.message || `HTTP ${resp.status}`;
+      const modelMissing = String(lastError).includes('is not found')
+        || String(lastError).includes('not supported for generateContent');
+      if (modelMissing) continue;
+      throw new Error(lastError);
+    }
+
+    const out = data?.candidates?.[0]?.content?.parts
+      ?.map((p) => p?.text || '')
+      .join('')
+      .trim();
+    if (out) return out.slice(0, 3800);
+    lastError = `No AI output from model ${model}`;
   }
 
-  const out = data?.candidates?.[0]?.content?.parts
-    ?.map((p) => p?.text || '')
-    .join('')
-    .trim();
-  if (!out) throw new Error('No AI output');
-  return out.slice(0, 3800);
+  throw new Error(lastError);
 }
 
 function setByPath(obj, p, value) {
