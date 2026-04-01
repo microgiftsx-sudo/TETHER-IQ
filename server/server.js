@@ -210,6 +210,59 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
   return data.result.message_id;
 }
 
+async function notifyWebChatMediaToTelegram(sessionId, media, captionText, visitorName, clientIp = '', visitorFingerprint = '') {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = telegramSupportChatId();
+  if (!botToken || !chatId) return null;
+  const nameLine = visitorName
+    ? `👤 ${visitorName}`
+    : '👤 زائر';
+  const metaLines = [
+    `🆔 ${sessionId}`,
+    nameLine,
+    `🌐 IP: ${clientIp || '—'}`,
+    `🧬 Fingerprint: ${visitorFingerprint || '—'}`,
+    `📎 النوع: ${media?.mediaType || 'file'}`,
+  ];
+  const safeCaptionText = String(captionText || '').trim();
+  const caption = [metaLines.join('\n'), safeCaptionText].filter(Boolean).join('\n━━━━━━━━━━━━━━━\n').slice(0, 900);
+  const modKb = await chatModerationInlineKeyboard(visitorFingerprint, clientIp);
+  const mediaUrl = String(media?.mediaUrl || '').trim();
+  const isImage = /^image\//i.test(String(media?.mediaType || ''));
+
+  if (isImage && /^https?:\/\//i.test(mediaUrl)) {
+    const { data } = await tgPostJson(botToken, 'sendPhoto', {
+      chat_id: telegramChatIdForApi(chatId),
+      photo: mediaUrl,
+      caption,
+      ...(modKb ? { reply_markup: modKb } : {}),
+    });
+    if (!data?.ok || !data?.result?.message_id) return null;
+    return data.result.message_id;
+  }
+
+  const lines = [
+    '💬 <b>وسائط من الموقع</b>',
+    `<b>🆔</b> <code>${escapeTelegramHtml(sessionId)}</code>`,
+    visitorName ? `👤 <i>${escapeTelegramHtml(visitorName)}</i>` : '👤 <i>زائر</i>',
+    `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
+    `<b>🧬 Fingerprint:</b> <code>${escapeTelegramHtml(visitorFingerprint || '—')}</code>`,
+    `<b>النوع:</b> <code>${escapeTelegramHtml(media?.mediaType || 'file')}</code>`,
+    `<b>الرابط:</b> ${escapeTelegramHtml(mediaUrl || '—')}`,
+    safeCaptionText ? `\n${escapeTelegramHtml(safeCaptionText)}` : '',
+    '',
+    '<i>↩️ رد على هذه الرسالة للإجابة العميل</i>',
+  ];
+  const { data } = await tgPostJson(botToken, 'sendMessage', {
+    chat_id: telegramChatIdForApi(chatId),
+    text: lines.join('\n'),
+    parse_mode: 'HTML',
+    ...(modKb ? { reply_markup: modKb } : {}),
+  });
+  if (!data?.ok || !data?.result?.message_id) return null;
+  return data.result.message_id;
+}
+
 function resolvePublicBaseUrl(req) {
   const envBase = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || '').trim();
   if (envBase) return envBase.replace(/\/+$/, '');
@@ -1096,20 +1149,15 @@ app.post('/api/chat/media', async (req, res) => {
     appendUserMessage(store, sessionId, fallbackText, visitorName, mediaForStore);
 
     if (sess.meta.handoffToStaff) {
-      const msgForStaff = `وسائط من العميل: ${fallbackText}\nالنوع: ${media.mediaType}\nالرابط: ${mediaPublicUrl}`;
-      const tgMsgId = await notifyWebChatToTelegram(sessionId, msgForStaff, visitorName, clientIp, visitorFingerprint);
+      const tgMsgId = await notifyWebChatMediaToTelegram(
+        sessionId,
+        mediaForStore,
+        fallbackText,
+        visitorName,
+        clientIp,
+        visitorFingerprint
+      );
       if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
-      if (media.mediaType.startsWith('image/') && /^https?:\/\//i.test(mediaPublicUrl)) {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        const chatId = telegramSupportChatId();
-        if (botToken && chatId) {
-          await tgPostJson(botToken, 'sendPhoto', {
-            chat_id: telegramChatIdForApi(chatId),
-            photo: mediaPublicUrl,
-            caption: `🖼️ ${fallbackText}`.slice(0, 900),
-          });
-        }
-      }
     } else {
       appendStaffMessage(store, sessionId, 'تم استلام الوسائط. اذا ترغب بالتحويل لموظف اكتب: تحويل لخدمة العملاء.');
     }
