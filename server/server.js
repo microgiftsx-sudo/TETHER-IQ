@@ -4153,6 +4153,35 @@ async function drainPendingUpdates() {
   }
 }
 
+async function registerTelegramCommands() {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return;
+
+    const commands = [
+      { command: 'start', description: 'القائمة الرئيسية' },
+      { command: 'help', description: 'عرض كل الأوامر' },
+      { command: 'order', description: 'عرض تفاصيل الطلب' },
+      { command: 'reply', description: 'الرد على عميل الموقع' },
+      { command: 'pay', description: 'عرض إعدادات الدفع' },
+      { command: 'ratemode', description: 'عرض وضع سعر الصرف' },
+      { command: 'improve', description: 'تحسين النص' },
+      { command: 'formal', description: 'صياغة رسمية' },
+      { command: 'short', description: 'اختصار النص' },
+      { command: 'setgemini', description: 'تعيين مفتاح Gemini' },
+    ];
+
+    const { data } = await tgPostJson(botToken, 'setMyCommands', { commands });
+    if (!data?.ok) {
+      console.error('Telegram setMyCommands failed:', JSON.stringify(data || {}));
+      return;
+    }
+    console.log(`Telegram commands registered: ${commands.length}`);
+  } catch (e) {
+    console.error('Telegram setMyCommands error:', e?.message || e);
+  }
+}
+
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
   app.use((_req, res) => {
@@ -4177,6 +4206,7 @@ app.listen(PORT, () => {
       }
     })
     .then(() => drainPendingUpdates())
+    .then(() => registerTelegramCommands())
     .then(() => {
       const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
       loopPoll();
