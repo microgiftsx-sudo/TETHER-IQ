@@ -1818,8 +1818,67 @@ function helpText() {
     '/set methods.mastercard.cardNumber 4444 5555 6666 7777',
     '/set methods.mastercard.cardHolder TetherIQ',
     '/set methods.asiaHawala.number 07700000000',
+    '',
+    '🤖 تحسين النص بالذكاء الاصطناعي:',
+    '/setgemini YOUR_API_KEY — حفظ مفتاح Gemini في .env',
+    '/improve نص — تحسين عام وواضح',
+    '/formal نص — صياغة رسمية',
+    '/short نص — اختصار النص',
     '━━━━━━━━━━━━━━━',
   ].join('\n');
+}
+
+async function improveTelegramTextWithAi(mode, inputText) {
+  const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not set');
+  }
+
+  const model = String(process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim();
+  const safeText = String(inputText || '').trim().slice(0, 4000);
+  if (!safeText) throw new Error('Empty text');
+
+  const modeInstruction = mode === 'formal'
+    ? 'اجعل النص رسمياً ومهنياً.'
+    : mode === 'short'
+      ? 'اختصر النص مع الحفاظ على المعنى.'
+      : 'حسّن النص ليكون واضحاً ومهنياً وسهل القراءة.';
+
+  const prompt = [
+    'أنت مساعد لتحسين النصوص العربية والإنجليزية.',
+    modeInstruction,
+    'أعد النص النهائي فقط بدون شرح إضافي.',
+    '',
+    'النص:',
+    safeText,
+  ].join('\n');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 800,
+      },
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const err = data?.error?.message || `HTTP ${resp.status}`;
+    throw new Error(err);
+  }
+
+  const out = data?.candidates?.[0]?.content?.parts
+    ?.map((p) => p?.text || '')
+    .join('')
+    .trim();
+  if (!out) throw new Error('No AI output');
+  return out.slice(0, 3800);
 }
 
 function setByPath(obj, p, value) {
@@ -3315,6 +3374,45 @@ async function handleAdminCommand(text, incomingChatId) {
     appendStaffMessage(store, sessionId, body);
     await saveChatStore(CHAT_PATH, store);
     await botSend(`✅ وُصلت للعميل على الموقع\n<code>${escapeTelegramHtml(sessionId)}</code>`, {}, incomingChatId);
+    return;
+  }
+
+  if (trimmed.startsWith('/setgemini ')) {
+    const key = raw.slice('/setgemini '.length).trim();
+    if (!/^AIza[0-9A-Za-z_-]{20,}$/.test(key)) {
+      await botSend('❌ مفتاح غير صالح. الصيغة المتوقعة تبدأ بـ <code>AIza...</code>', {}, incomingChatId);
+      return;
+    }
+    process.env.GEMINI_API_KEY = key;
+    await persistEnvKey('GEMINI_API_KEY', key);
+    await botSend('✅ تم حفظ مفتاح Gemini بنجاح.', {}, incomingChatId);
+    return;
+  }
+
+  if (trimmed.startsWith('/improve ') || trimmed.startsWith('/formal ') || trimmed.startsWith('/short ')) {
+    const mode = trimmed.startsWith('/formal ')
+      ? 'formal'
+      : trimmed.startsWith('/short ')
+        ? 'short'
+        : 'improve';
+    const input = mode === 'formal'
+      ? raw.slice('/formal '.length).trim()
+      : mode === 'short'
+        ? raw.slice('/short '.length).trim()
+        : raw.slice('/improve '.length).trim();
+
+    if (!input) {
+      await botSend('❌ اكتب النص بعد الأمر. مثال: <code>/improve اكتب النص هنا</code>', {}, incomingChatId);
+      return;
+    }
+
+    await botSend('⏳ جاري تحسين النص...', {}, incomingChatId);
+    try {
+      const improved = await improveTelegramTextWithAi(mode, input);
+      await botSend(`✨ <b>النص المحسّن:</b>\n\n${escapeTelegramHtml(improved)}`, {}, incomingChatId);
+    } catch (e) {
+      await botSend(`❌ فشل تحسين النص: ${escapeTelegramHtml(String(e?.message || e))}`, {}, incomingChatId);
+    }
     return;
   }
 
