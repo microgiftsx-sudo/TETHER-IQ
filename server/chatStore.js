@@ -62,7 +62,7 @@ function pruneOldSessions(store) {
   }
 }
 
-export function appendUserMessage(store, sessionId, text, visitorName) {
+export function appendUserMessage(store, sessionId, text, visitorName, extra = {}) {
   const sess = ensureSession(store, sessionId, visitorName);
   if (!sess) return null;
   if (visitorName && !sess.visitorName) sess.visitorName = String(visitorName).slice(0, 80);
@@ -72,6 +72,11 @@ export function appendUserMessage(store, sessionId, text, visitorName) {
     role: 'user',
     text: String(text || '').slice(0, 4000),
     at: new Date().toISOString(),
+    ...(extra && typeof extra === 'object' ? {
+      mediaUrl: extra.mediaUrl ? String(extra.mediaUrl).slice(0, 500) : undefined,
+      mediaType: extra.mediaType ? String(extra.mediaType).slice(0, 120) : undefined,
+      mediaName: extra.mediaName ? String(extra.mediaName).slice(0, 180) : undefined,
+    } : {}),
   };
   sess.messages.push(msg);
   pruneSessionMessages(sess);
@@ -79,7 +84,7 @@ export function appendUserMessage(store, sessionId, text, visitorName) {
   return msg;
 }
 
-export function appendStaffMessage(store, sessionId, text) {
+export function appendStaffMessage(store, sessionId, text, extra = {}) {
   const sess = store.sessions[sessionId];
   if (!sess) return null;
   const id = sess.nextMsgId++;
@@ -88,6 +93,11 @@ export function appendStaffMessage(store, sessionId, text) {
     role: 'staff',
     text: String(text || '').slice(0, 4000),
     at: new Date().toISOString(),
+    ...(extra && typeof extra === 'object' ? {
+      mediaUrl: extra.mediaUrl ? String(extra.mediaUrl).slice(0, 500) : undefined,
+      mediaType: extra.mediaType ? String(extra.mediaType).slice(0, 120) : undefined,
+      mediaName: extra.mediaName ? String(extra.mediaName).slice(0, 180) : undefined,
+    } : {}),
   };
   sess.messages.push(msg);
   pruneSessionMessages(sess);

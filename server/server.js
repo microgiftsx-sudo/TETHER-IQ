@@ -96,6 +96,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'paymentDetails.json');
 const QR_DIR = path.join(DATA_DIR, 'qr');
+const CHAT_MEDIA_DIR = path.join(DATA_DIR, 'chat-media');
 const SITE_CONFIG_PATH = path.join(DATA_DIR, 'siteConfig.json');
 const STATS_PATH = path.join(DATA_DIR, 'stats.json');
 const TESTIMONIALS_PATH = path.join(DATA_DIR, 'testimonials.json');
@@ -277,6 +278,7 @@ function envRequired(name) {
 async function initDataFiles() {
   try { await mkdir(DATA_DIR, { recursive: true }); } catch { /* exists */ }
   try { await mkdir(QR_DIR, { recursive: true }); } catch { /* exists */ }
+  try { await mkdir(CHAT_MEDIA_DIR, { recursive: true }); } catch { /* exists */ }
   const defaultsDir = path.join(__dirname, 'defaults');
   const defaults = [
     { name: 'paymentDetails.json', dest: DATA_PATH },
@@ -901,6 +903,17 @@ app.post('/api/chat/session', async (_req, res) => {
     const store = await loadChatStore(CHAT_PATH);
     const sessionId = newSessionId();
     ensureSession(store, sessionId, '');
+    // Default mode: AI first-line support until visitor requests human transfer.
+    const sess = store.sessions[sessionId];
+    if (sess) {
+      if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
+      sess.meta.handoffToStaff = false;
+      appendStaffMessage(
+        store,
+        sessionId,
+        'اهلا بك في خدمة العملاء. اكتب طلبك وساساعدك الان. اذا رغبت بالتحويل الى موظف، اكتب: تحويل لخدمة العملاء.'
+      );
+    }
     await saveChatStore(CHAT_PATH, store);
     res.json({ sessionId });
   } catch (e) {
@@ -958,15 +971,200 @@ app.post('/api/chat/message', async (req, res) => {
     if (!store.sessions[sessionId]) {
       return res.status(404).json({ error: 'Session not found' });
     }
+
+    const sess = store.sessions[sessionId];
+    if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
+    const alreadyHandedOff = Boolean(sess.meta.handoffToStaff);
+
     appendUserMessage(store, sessionId, text, visitorName);
-    const tgMsgId = await notifyWebChatToTelegram(sessionId, text, visitorName, clientIp, visitorFingerprint);
-    if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+
+    if (alreadyHandedOff) {
+      const tgMsgId = await notifyWebChatToTelegram(sessionId, text, visitorName, clientIp, visitorFingerprint);
+      if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+      await saveChatStore(CHAT_PATH, store);
+      return res.json({ ok: true, mode: 'staff' });
+    }
+
+    if (wantsCustomerServiceTransfer(text)) {
+      sess.meta.handoffToStaff = true;
+      appendStaffMessage(
+        store,
+        sessionId,
+        'تم تحويلك الى موظف خدمة العملاء. يرجى الانتظار وسيتم الرد عليك قريبا.'
+      );
+      const tgMsgId = await notifyWebChatToTelegram(
+        sessionId,
+        `طلب تحويل الى موظف خدمة العملاء.\nرسالة العميل: ${text}`,
+        visitorName,
+        clientIp,
+        visitorFingerprint
+      );
+      if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+      await saveChatStore(CHAT_PATH, store);
+      return res.json({ ok: true, mode: 'staff', transferred: true });
+    }
+
+    try {
+      const aiReply = await generateCustomerServiceAiReply(text, visitorName);
+      appendStaffMessage(store, sessionId, aiReply);
+    } catch {
+      appendStaffMessage(
+        store,
+        sessionId,
+        'واجهنا تاخيرا مؤقتا. اعد المحاولة، او اكتب تحويل لخدمة العملاء للتحويل لموظف.'
+      );
+    }
+
     await saveChatStore(CHAT_PATH, store);
-    res.json({ ok: true });
+    res.json({ ok: true, mode: 'ai' });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
+
+async function saveChatMediaDataUrl(dataUrl, originalName = '') {
+  const raw = String(dataUrl || '').trim();
+  const m = raw.match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) throw new Error('Invalid media format');
+  const mime = String(m[1] || '').toLowerCase();
+  const base64 = m[2];
+  const buf = Buffer.from(base64, 'base64');
+  if (!buf.length) throw new Error('Empty file');
+  if (buf.length > 6 * 1024 * 1024) throw new Error('File too large (max 6MB)');
+
+  const extByMime = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'application/pdf': 'pdf',
+  };
+  const ext = extByMime[mime] || String(originalName || '').split('.').pop()?.toLowerCase() || 'bin';
+  const safeExt = String(ext).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
+  const name = `chat_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
+  const fullPath = path.join(CHAT_MEDIA_DIR, name);
+  await writeFile(fullPath, buf);
+  return { mediaUrl: `/api/chat-media/${name}`, mediaType: mime, mediaName: String(originalName || '').slice(0, 160) };
+}
+
+app.post('/api/chat/media', async (req, res) => {
+  try {
+    if (!chatRateOk(req)) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    const body = req.body || {};
+    const sessionId = String(body.sessionId || '').trim();
+    const dataUrl = String(body.dataUrl || '').trim();
+    const fileName = String(body.fileName || '').trim();
+    const caption = String(body.caption || '').trim().slice(0, 600);
+    const visitorName = String(body.visitorName || '').trim().slice(0, 80);
+    const visitorFingerprint = normalizeFingerprintInput(body.visitorId || '');
+    const clientIp = getClientIpFromRequest(req);
+
+    const blocked = await getBlockedIpEntry(clientIp);
+    if (blocked) return res.status(403).json(blockedViolationPayload(blocked));
+    const blockedFp = await getBlockedFingerprintEntry(visitorFingerprint);
+    if (blockedFp) return res.status(403).json(blockedFingerprintViolationPayload(blockedFp));
+
+    if (!sessionId.startsWith('sess_') || !dataUrl) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const store = await loadChatStore(CHAT_PATH);
+    const sess = store.sessions[sessionId];
+    if (!sess) return res.status(404).json({ error: 'Session not found' });
+    if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
+
+    const media = await saveChatMediaDataUrl(dataUrl, fileName);
+    const fallbackText = caption || (media.mediaType.startsWith('image/') ? 'صورة مرفقة' : 'ملف مرفق');
+    appendUserMessage(store, sessionId, fallbackText, visitorName, media);
+
+    if (sess.meta.handoffToStaff) {
+      const msgForStaff = `وسائط من العميل: ${fallbackText}\nالنوع: ${media.mediaType}\nالرابط: ${media.mediaUrl}`;
+      const tgMsgId = await notifyWebChatToTelegram(sessionId, msgForStaff, visitorName, clientIp, visitorFingerprint);
+      if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+    } else {
+      appendStaffMessage(store, sessionId, 'تم استلام الوسائط. اذا ترغب بالتحويل لموظف اكتب: تحويل لخدمة العملاء.');
+    }
+
+    await saveChatStore(CHAT_PATH, store);
+    res.json({ ok: true, mediaUrl: media.mediaUrl, mediaType: media.mediaType });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+function wantsCustomerServiceTransfer(text) {
+  const s = String(text || '').toLowerCase().trim();
+  if (!s) return false;
+  if (/تحويل|حوّل|حولني|موظف|خدمة العملاء|دعم بشري|ادمِن|ادمن/.test(s)) return true;
+  if (/human|agent|support|transfer|representative|customer service/.test(s)) return true;
+  return false;
+}
+
+async function generateCustomerServiceAiReply(userText, visitorName = '') {
+  const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+
+  const modelCandidates = [
+    String(process.env.GEMINI_MODEL || '').trim(),
+    'gemini-flash-latest',
+    'gemini-2.0-flash',
+  ].filter(Boolean);
+
+  const customerName = String(visitorName || '').trim().slice(0, 80);
+  const input = String(userText || '').trim().slice(0, 2000);
+  if (!input) throw new Error('Empty message');
+
+  const prompt = [
+    'انت مساعد خدمة عملاء لموقع تبادل USDT.',
+    'المطلوب: افهم طلب العميل ثم قدم رد مختصر ومفيد وواضح.',
+    'اذا كان الطلب يحتاج موظف بشري، اطلب منه كتابة: تحويل لخدمة العملاء.',
+    'لا تذكر اي تفاصيل تقنية داخلية.',
+    '',
+    `اسم العميل: ${customerName || 'غير مذكور'}`,
+    `رسالة العميل: ${input}`,
+  ].join('\n');
+
+  let lastError = 'Unknown AI error';
+  for (const model of modelCandidates) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.35, maxOutputTokens: 500 },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      lastError = data?.error?.message || `HTTP ${resp.status}`;
+      const modelMissing = String(lastError).includes('is not found')
+        || String(lastError).includes('not supported for generateContent');
+      if (modelMissing) continue;
+      throw new Error(lastError);
+    }
+
+    const out = data?.candidates?.[0]?.content?.parts
+      ?.map((p) => p?.text || '')
+      .join('')
+      .trim();
+    if (out) return out.slice(0, 3500);
+    lastError = `No AI output from model ${model}`;
+  }
+
+  throw new Error(lastError);
+}
 
 function isLocalOrPrivateIp(ip) {
   const s = String(ip || '').trim().replace(/^::ffff:/, '');
@@ -1299,6 +1497,19 @@ app.get('/api/qr/:filename', async (req, res) => {
   const filename = String(req.params.filename || '').replace(/[^a-zA-Z0-9_.\-]/g, '');
   if (!filename) return res.status(400).end();
   const filePath = path.join(QR_DIR, filename);
+  try {
+    await access(filePath);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(filePath);
+  } catch {
+    res.status(404).end();
+  }
+});
+
+app.get('/api/chat-media/:filename', async (req, res) => {
+  const filename = String(req.params.filename || '').replace(/[^a-zA-Z0-9_.\-]/g, '');
+  if (!filename) return res.status(400).end();
+  const filePath = path.join(CHAT_MEDIA_DIR, filename);
   try {
     await access(filePath);
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1829,9 +2040,9 @@ function helpText() {
 }
 
 async function improveTelegramTextWithAi(mode, inputText) {
-  const apiKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+  const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not set. Use /setgemini YOUR_API_KEY');
+    throw new Error('GEMINI_API_KEY not set');
   }
 
   const preferredModel = String(process.env.GEMINI_MODEL || '').trim();
@@ -3842,37 +4053,6 @@ async function drainPendingUpdates() {
   }
 }
 
-async function registerTelegramCommands() {
-  try {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) return;
-
-    const commands = [
-      { command: 'start', description: 'القائمة الرئيسية' },
-      { command: 'help', description: 'عرض كل الأوامر' },
-      { command: 'improve', description: 'تحسين النص' },
-      { command: 'formal', description: 'تحويل النص لصياغة رسمية' },
-      { command: 'short', description: 'اختصار النص' },
-      { command: 'setgemini', description: 'تعيين مفتاح Gemini API' },
-      { command: 'order', description: 'عرض تفاصيل الطلب' },
-      { command: 'reply', description: 'الرد على عميل الموقع' },
-      { command: 'pay', description: 'عرض إعدادات الدفع الحالية' },
-      { command: 'ratemode', description: 'عرض وضع سعر الصرف' },
-    ];
-
-    const { data } = await tgPostJson(botToken, 'setMyCommands', {
-      commands,
-    });
-    if (!data?.ok) {
-      console.error('Telegram setMyCommands failed:', JSON.stringify(data || {}));
-      return;
-    }
-    console.log(`Telegram commands registered: ${commands.length}`);
-  } catch (e) {
-    console.error('Telegram setMyCommands error:', e?.message || e);
-  }
-}
-
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
   app.use((_req, res) => {
@@ -3897,7 +4077,6 @@ app.listen(PORT, () => {
       }
     })
     .then(() => drainPendingUpdates())
-    .then(() => registerTelegramCommands())
     .then(() => {
       const loopPoll = () => pollTelegram().finally(() => setImmediate(loopPoll));
       loopPoll();

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { createChatSession, sendChatMessage, fetchChatMessages } from '../api';
+import { createChatSession, sendChatMessage, fetchChatMessages, uploadChatMedia } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
 
 const STORAGE_KEY = 'web_chat_session_id';
@@ -18,6 +18,7 @@ export default function ChatWidget({ t, lang }) {
   const [lastId, setLastId] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [mediaFile, setMediaFile] = useState(null);
   const [error, setError] = useState('');
   const listRef = useRef(null);
   const pollRef = useRef(null);
@@ -228,6 +229,34 @@ export default function ChatWidget({ t, lang }) {
     }
   };
 
+  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+
+  const onSendMedia = async () => {
+    if (!mediaFile || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const sid = sessionId || (await ensureSession());
+      const nm = visitorName.trim();
+      const visitorId = getOrCreateVisitorId();
+      const dataUrl = await fileToDataUrl(mediaFile);
+      await uploadChatMedia(sid, dataUrl, mediaFile.name || '', input.trim(), nm, visitorId);
+      if (nm) lockName(nm);
+      setInput('');
+      setMediaFile(null);
+      await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
+    } catch (err) {
+      setError(String(err?.message || err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
     const sid = sessionId || localStorage.getItem(STORAGE_KEY);
@@ -318,7 +347,16 @@ export default function ChatWidget({ t, lang }) {
                 key={m.id}
                 className={`web-chat-msg ${m.role === 'user' ? 'web-chat-msg--user' : 'web-chat-msg--staff'}`}
               >
-                {m.text}
+                <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                {m.mediaUrl && String(m.mediaType || '').startsWith('image/') ? (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8 }}>
+                    <img src={m.mediaUrl} alt={m.mediaName || 'media'} style={{ maxWidth: 190, maxHeight: 160, borderRadius: 10, border: '1px solid rgba(148,163,184,.35)' }} />
+                  </a>
+                ) : m.mediaUrl ? (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, textDecoration: 'underline' }}>
+                    {m.mediaName || (isRtl ? 'فتح الملف المرفق' : 'Open attached file')}
+                  </a>
+                ) : null}
               </div>
             ))}
             {error && <div className="text-error text-sm" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
@@ -337,6 +375,23 @@ export default function ChatWidget({ t, lang }) {
               {loading ? '…' : t.chatSend}
             </button>
           </form>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <input
+              type="file"
+              onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+              disabled={loading}
+              style={{ flex: 1, fontSize: '0.8rem' }}
+            />
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={onSendMedia}
+              disabled={loading || !mediaFile}
+              style={{ padding: '0.45rem 0.8rem' }}
+            >
+              {isRtl ? 'رفع الوسائط' : 'Upload'}
+            </button>
+          </div>
         </div>
       )}
     </>

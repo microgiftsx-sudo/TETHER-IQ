@@ -149,3 +149,10 @@ export function fetchChatMessages(sessionId, after = 0) {
   return jsonFetch(`/api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&after=${after}`);
 }
 
+export function uploadChatMedia(sessionId, dataUrl, fileName = '', caption = '', visitorName = '', visitorId = '') {
+  return jsonFetch('/api/chat/media', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, dataUrl, fileName, caption, visitorName, visitorId }),
+  });
+}
+
