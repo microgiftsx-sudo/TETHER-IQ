@@ -438,7 +438,7 @@ export default function ChatWidget({ t, lang }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (mediaFile && !input.trim()) {
+              if (mediaFile) {
                 onSendMedia();
                 return;
               }
