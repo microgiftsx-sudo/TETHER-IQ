@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 export default function Header({ t, lang, toggleLang, links }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcementProgress, setAnnouncementProgress] = useState(0);
+  const [announcementHeight, setAnnouncementHeight] = useState(56);
   const isRtl = lang === 'ar';
   const navigate = useNavigate();
   const announceHeightRef = useRef(56);
@@ -13,7 +14,7 @@ export default function Header({ t, lang, toggleLang, links }) {
     if (mobileOpen) root.classList.add('has-mobile-menu-open');
     else root.classList.remove('has-mobile-menu-open');
     return () => root.classList.remove('has-mobile-menu-open');
-  }, [mobileOpen]);
+  }, [announcementHeight, mobileOpen]);
 
   useEffect(() => {
     const MOBILE_BREAKPOINT = 900;
@@ -33,7 +34,7 @@ export default function Header({ t, lang, toggleLang, links }) {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const y = Math.max(0, window.scrollY || 0);
-        const h = Math.max(40, announceHeightRef.current || 56);
+        const h = Math.max(40, announceHeightRef.current || announcementHeight || 56);
         const p = Math.max(0, Math.min(1, y / h));
         setAnnouncementProgress(p);
       });
@@ -44,7 +45,7 @@ export default function Header({ t, lang, toggleLang, links }) {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll);
     };
-  }, [mobileOpen]);
+  }, [announcementHeight, mobileOpen]);
 
   const navLinks = [
     { label: t.navHome, href: '#hero' },
@@ -71,6 +72,8 @@ export default function Header({ t, lang, toggleLang, links }) {
   };
 
   const effectiveAnnouncementHidden = mobileOpen;
+  const safeAnnouncementHeight = Math.max(40, announcementHeight || 56);
+  const announcementOffsetPx = effectiveAnnouncementHidden ? safeAnnouncementHeight : (announcementProgress * safeAnnouncementHeight);
 
   return (
     <header className="header-sticky">
@@ -79,6 +82,7 @@ export default function Header({ t, lang, toggleLang, links }) {
         ref={(el) => {
           if (!el) return;
           announceHeightRef.current = el.offsetHeight || announceHeightRef.current;
+          setAnnouncementHeight(announceHeightRef.current);
         }}
         style={
           effectiveAnnouncementHidden
@@ -92,7 +96,7 @@ export default function Header({ t, lang, toggleLang, links }) {
         {t.announcement}
       </div>
 
-      <nav className="header-bar">
+      <nav className="header-bar" style={{ transform: `translateY(-${announcementOffsetPx}px)` }}>
         <div className="header-inner">
           <Logo navigate={navigate} />
 

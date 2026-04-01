@@ -407,20 +407,17 @@ export default function ChatWidget({ t, lang }) {
             {error && <div className="text-error text-sm" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
           </div>
 
-          <form onSubmit={onSend} className="web-chat-panel__form">
-            <input
-              className="input-control"
-              placeholder={t.chatPlaceholder}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={loading}
-              style={{ flex: 1, fontSize: '0.9rem' }}
-            />
-            <button type="submit" className="btn btn-primary" disabled={loading || !input.trim()} style={{ padding: '0.5rem 1rem' }}>
-              {loading ? '…' : t.chatSend}
-            </button>
-          </form>
-          <div className="web-chat-media-row">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (mediaFile && !input.trim()) {
+                onSendMedia();
+                return;
+              }
+              onSend(e);
+            }}
+            className="web-chat-panel__form web-chat-panel__form--modern"
+          >
             <input
               ref={galleryInputRef}
               type="file"
@@ -437,34 +434,47 @@ export default function ChatWidget({ t, lang }) {
               disabled={loading}
               className="web-chat-media-input"
             />
-            <button
-              type="button"
-              className="web-chat-icon-btn"
-              onClick={onPickCamera}
-              disabled={loading}
-              title={isRtl ? 'الكاميرا' : 'Camera'}
-            >
-              📷
-            </button>
-            <button
-              type="button"
-              className="web-chat-icon-btn"
-              onClick={onPickGallery}
-              disabled={loading}
-              title={isRtl ? 'الاستوديو' : 'Gallery'}
-            >
-              🖼️
-            </button>
-            <button
-              type="button"
-              className="web-chat-icon-btn"
-              onClick={onSendMedia}
-              disabled={loading || !mediaFile}
-              title={isRtl ? 'رفع الوسائط' : 'Upload media'}
-            >
-              ⬆️
-            </button>
-          </div>
+            <div className="web-chat-send-shell">
+              <button
+                type="button"
+                className="web-chat-inline-icon"
+                onClick={onPickGallery}
+                disabled={loading}
+                title={isRtl ? 'إرفاق من الاستوديو' : 'Attach from gallery'}
+              >
+                📎
+              </button>
+              <button
+                type="button"
+                className="web-chat-inline-icon"
+                onClick={onPickCamera}
+                disabled={loading}
+                title={isRtl ? 'التقاط من الكاميرا' : 'Capture from camera'}
+              >
+                📷
+              </button>
+              <input
+                className="input-control web-chat-modern-input"
+                placeholder={t.chatPlaceholder}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                className="web-chat-send-round"
+                disabled={loading || (!input.trim() && !mediaFile)}
+                title={isRtl ? 'إرسال' : 'Send'}
+              >
+                ↑
+              </button>
+            </div>
+            {mediaFile ? (
+              <div className="web-chat-selected-file" title={mediaFile.name || ''}>
+                {mediaFile.name}
+              </div>
+            ) : null}
+          </form>
         </div>
       )}
     </>
