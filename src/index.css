@@ -17,6 +17,7 @@
   --border-radius-sm: 8px;
   --transition-fast: 0.2s ease;
   --transition-normal: 0.3s ease;
+  --transition-smooth: 0.45s cubic-bezier(.22,.61,.36,1);
   --section-gap: 1.5rem;
   --section-gap-lg: 2.5rem;
   --content-max: 1200px;
@@ -55,6 +56,12 @@
   padding: 0;
 }
 
+*,
+*::before,
+*::after {
+  backface-visibility: hidden;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -65,6 +72,12 @@ html, body {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 ::selection {
@@ -88,6 +101,58 @@ body {
     radial-gradient(ellipse 55% 40% at 85% 88%, rgba(0, 229, 255, 0.05), transparent 55%),
     linear-gradient(180deg, #050b16 0%, #030712 38%, #06121c 72%, #030712 100%);
   -webkit-overflow-scrolling: touch;
+}
+
+a,
+button,
+.btn,
+.glass-panel,
+.input-control,
+.header-nav-link,
+.header-lang-btn,
+.header-cta {
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-normal),
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+a:active,
+button:active,
+.btn:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+@keyframes smoothFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.glass-panel,
+.payment-card,
+.step-card,
+.contact-card,
+.faq-item,
+.testimonials-card,
+.order-track-card,
+.my-orders-card,
+.buy-panel,
+.web-chat-panel {
+  animation: smoothFadeUp var(--transition-smooth) both;
+}
+
+.my-orders-list__row,
+.order-track-row {
+  animation: smoothFadeUp 0.35s both;
 }
 
 [dir='rtl'] {
