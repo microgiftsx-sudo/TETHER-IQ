@@ -51,6 +51,14 @@ export default function MyOrdersPage() {
   }, [isRtl, lang]);
 
   useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
+  useEffect(() => {
     const refresh = () => setOrders(getSavedOrders());
     refresh();
     window.addEventListener('storage', refresh);

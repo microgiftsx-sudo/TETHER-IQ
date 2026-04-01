@@ -3,12 +3,10 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Header({ t, lang, toggleLang, links }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [announcementHidden, setAnnouncementHidden] = useState(false);
+  const [announcementProgress, setAnnouncementProgress] = useState(0);
   const isRtl = lang === 'ar';
   const navigate = useNavigate();
-  const lastScrollYRef = useRef(0);
-  const lastToggleYRef = useRef(0);
-  const announcementHiddenRef = useRef(false);
+  const announceHeightRef = useRef(56);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -30,49 +28,23 @@ export default function Header({ t, lang, toggleLang, links }) {
 
   useEffect(() => {
     if (mobileOpen) return undefined;
+    let raf = 0;
     const onScroll = () => {
-      const y = Math.max(0, window.scrollY || 0);
-      const prev = lastScrollYRef.current;
-      const delta = y - prev;
-      const HIDE_AFTER_PX = 80;
-      const SHOW_BEFORE_PX = 24;
-      const MIN_TRAVEL_PX = 28;
-      const MIN_DELTA_PX = 2;
-
-      lastScrollYRef.current = y;
-
-      if (Math.abs(delta) < MIN_DELTA_PX) return;
-
-      const setHiddenStable = (next) => {
-        if (announcementHiddenRef.current === next) return;
-        announcementHiddenRef.current = next;
-        lastToggleYRef.current = y;
-        setAnnouncementHidden(next);
-      };
-
-      if (y <= SHOW_BEFORE_PX) {
-        setHiddenStable(false);
-        return;
-      }
-
-      const travelFromLastToggle = Math.abs(y - lastToggleYRef.current);
-      if (travelFromLastToggle < MIN_TRAVEL_PX) return;
-
-      if (delta > 0 && !announcementHiddenRef.current && y >= HIDE_AFTER_PX) {
-        setHiddenStable(true);
-        return;
-      }
-      if (delta < 0 && announcementHiddenRef.current) {
-        setHiddenStable(false);
-      }
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const y = Math.max(0, window.scrollY || 0);
+        const h = Math.max(40, announceHeightRef.current || 56);
+        const p = Math.max(0, Math.min(1, y / h));
+        setAnnouncementProgress(p);
+      });
     };
-
-    lastScrollYRef.current = Math.max(0, window.scrollY || 0);
-    lastToggleYRef.current = lastScrollYRef.current;
-    announcementHiddenRef.current = announcementHidden;
+    onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [announcementHidden, mobileOpen]);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [mobileOpen]);
 
   const navLinks = [
     { label: t.navHome, href: '#hero' },
@@ -98,11 +70,25 @@ export default function Header({ t, lang, toggleLang, links }) {
     setMobileOpen(false);
   };
 
-  const effectiveAnnouncementHidden = mobileOpen || announcementHidden;
+  const effectiveAnnouncementHidden = mobileOpen;
 
   return (
     <header className="header-sticky">
-      <div className={`header-announcement${effectiveAnnouncementHidden ? ' header-announcement--hidden' : ''}`}>
+      <div
+        className={`header-announcement${effectiveAnnouncementHidden ? ' header-announcement--hidden' : ''}`}
+        ref={(el) => {
+          if (!el) return;
+          announceHeightRef.current = el.offsetHeight || announceHeightRef.current;
+        }}
+        style={
+          effectiveAnnouncementHidden
+            ? undefined
+            : {
+              transform: `translateY(-${announcementProgress * 100}%)`,
+              opacity: `${1 - (announcementProgress * 0.95)}`,
+            }
+        }
+      >
         {t.announcement}
       </div>
 
