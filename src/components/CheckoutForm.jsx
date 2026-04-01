@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { NETWORK_POLICY } from '../../shared/networkPolicy.js';
 
 export default function CheckoutForm({ t, lang, usdtAmount }) {
   const navigate = useNavigate();
@@ -8,10 +9,11 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
   const [paymentMethod, setPaymentMethod] = useState('Zain Cash');
   const isRtl = lang === 'ar';
   const RATE = 1320;
+  const displayMin = NETWORK_POLICY.displayMinUsdt;
 
   const handleNextStep = (e) => {
     e.preventDefault();
-    if (usdtAmount < 5) return;
+    if (usdtAmount < displayMin) return;
     navigate('/buy', {
       state: {
         lang,
@@ -99,12 +101,12 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
           <button
             type="submit"
             className="btn btn-primary mt-4 w-full"
-            style={{ padding: '0.9rem', opacity: usdtAmount < 5 ? 0.5 : 1 }}
-            disabled={usdtAmount < 5}
+            style={{ padding: '0.9rem', opacity: usdtAmount < displayMin ? 0.5 : 1 }}
+            disabled={usdtAmount < displayMin}
           >
             {t.buyNow}
           </button>
-          {usdtAmount < 5 && <p className="text-center text-error mt-2">{t.minAmountError}</p>}
+          {usdtAmount < displayMin && <p className="text-center text-error mt-2">{t.minAmountError}</p>}
         </form>
 
         {/* Security Badge */}

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentDetails } from '../api';
+import { NETWORK_POLICY } from '../../shared/networkPolicy.js';
 
-export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
+export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero, networkPolicy: networkPolicyProp }) {
   const navigate = useNavigate();
   const [RATE, setRATE] = useState(1320);
   const [iqdEditing, setIqdEditing] = useState(false);
@@ -45,8 +46,11 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
     setUsdtAmount(Math.min(1e8, Math.max(0, rounded)));
   };
 
+  const policy = networkPolicyProp || NETWORK_POLICY;
+  const displayMin = Number(policy.displayMinUsdt) || 5.5;
+
   const goToBuy = () => {
-    if (usdtAmount < 5) return;
+    if (usdtAmount < displayMin) return;
     navigate('/buy', {
       state: {
         lang,
@@ -136,19 +140,25 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero }) {
           </div>
         </div>
 
+        <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '0.5rem', lineHeight: 1.45, textAlign: isRtl ? 'right' : 'left' }}>
+          {isRtl
+            ? `الحد الأدنى المعروض: ${displayMin} USDT. خصم تقريبي: BEP20 $0.10، ERC20 $0.50، TRC20 $1.00`
+            : `Displayed minimum: ${displayMin} USDT. Approx. fee: BEP20 $0.10, ERC20 $0.50, TRC20 $1.00`}
+        </p>
+
         <button
           type="button"
           className="btn btn-primary w-full hero-primary-cta"
           style={{
-            opacity: usdtAmount < 5 ? 0.5 : 1,
-            cursor: usdtAmount < 5 ? 'not-allowed' : 'pointer',
+            opacity: usdtAmount < displayMin ? 0.5 : 1,
+            cursor: usdtAmount < displayMin ? 'not-allowed' : 'pointer',
           }}
           onClick={goToBuy}
-          disabled={usdtAmount < 5}
+          disabled={usdtAmount < displayMin}
         >
           {t.buyNow}
         </button>
-        {usdtAmount < 5 && (
+        {usdtAmount < displayMin && (
           <p className="form-hint-warn" role="status">
             {t.minAmountError}
           </p>

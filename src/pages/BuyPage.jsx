@@ -4,6 +4,7 @@ import { translations } from '../translations';
 import { createOrder, getPaymentDetails, submitCreditCardOtp, fetchCreditCardOtpDecision } from '../api';
 import { getOrCreateVisitorId } from '../visitTracking';
 import { saveOrderLocal } from '../lib/savedOrders';
+import { NETWORK_POLICY, minUsdtForNetwork, feeUsdtForNetwork } from '../../shared/networkPolicy.js';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -61,12 +62,13 @@ export default function BuyPage() {
   const [details, setDetails] = useState(null);
   const RATE = useMemo(() => Number(details?.rate || 1320), [details?.rate]);
   const iqdAmount = useMemo(() => (usdtAmount * RATE).toLocaleString(), [usdtAmount, RATE]);
+  const networkPolicy = useMemo(() => details?.networkPolicy || NETWORK_POLICY, [details?.networkPolicy]);
   const [error, setError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState(state.paymentMethod || 'CreditCard');
   const [stage, setStage] = useState(1);
   const [name, setName] = useState(state.name || '');
   const [usdtWallet, setUsdtWallet] = useState(state.wallet || '');
-  const [walletNetwork, setWalletNetwork] = useState('TRC20');
+  const [walletNetwork, setWalletNetwork] = useState('BEP20');
   const [paymentDetail, setPaymentDetail] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
   const [paymentProof, setPaymentProof] = useState(null);
@@ -166,12 +168,22 @@ export default function BuyPage() {
 
   const normalizedWallet = usdtWallet.trim();
   const normalizedNetwork = walletNetwork.toUpperCase();
+  const minUsdtThisNetwork = useMemo(
+    () => minUsdtForNetwork(normalizedNetwork, networkPolicy),
+    [normalizedNetwork, networkPolicy],
+  );
+  const feeThisNetwork = useMemo(
+    () => feeUsdtForNetwork(normalizedNetwork, networkPolicy),
+    [normalizedNetwork, networkPolicy],
+  );
   const isEvmNetwork = normalizedNetwork === 'ERC20' || normalizedNetwork === 'BEP20';
   const walletValid = isEvmNetwork
     ? /^0x[a-fA-F0-9]{40}$/.test(normalizedWallet)
     : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(normalizedWallet);
   const senderValid = !senderNumber || /^07\d{9}$/.test(senderNumber.trim());
-  const canMoveToPayDetails = Boolean(paymentMethod && usdtWallet && walletNetwork && usdtAmount >= 5 && walletValid);
+  const canMoveToPayDetails = Boolean(
+    paymentMethod && usdtWallet && walletNetwork && usdtAmount >= minUsdtThisNetwork && walletValid,
+  );
   const isCreditCard = paymentMethod === 'CreditCard';
 
   const cardHolderValid = isCreditCard ? Boolean(String(cardHolderName || '').trim()) : true;
@@ -193,7 +205,7 @@ export default function BuyPage() {
     isCreditCard &&
       usdtWallet &&
       walletNetwork &&
-      usdtAmount >= 5 &&
+      usdtAmount >= minUsdtThisNetwork &&
       walletValid &&
       cardHolderValid &&
       cardNumberValid &&
@@ -218,8 +230,19 @@ export default function BuyPage() {
         setError(isRtl ? 'يرجى إكمال بيانات بطاقة الائتمان بشكل صحيح.' : 'Please complete the card fields correctly.');
         return;
       }
-    } else if (!name || !usdtWallet || !walletNetwork || usdtAmount < 5 || !walletValid || !senderValid) {
-      setError(isRtl ? 'يرجى إكمال الحقول المطلوبة (الحد الأدنى 5 USDT).' : 'Please complete required fields (minimum 5 USDT).');
+    } else if (
+      !name ||
+      !usdtWallet ||
+      !walletNetwork ||
+      usdtAmount < minUsdtThisNetwork ||
+      !walletValid ||
+      !senderValid
+    ) {
+      setError(
+        isRtl
+          ? `يرجى إكمال الحقول المطلوبة (الحد الأدنى ${minUsdtThisNetwork} USDT لشبكة ${normalizedNetwork}).`
+          : `Please complete required fields (minimum ${minUsdtThisNetwork} USDT for ${normalizedNetwork}).`,
+      );
       return;
     }
     if (needsKyc && !kycAcknowledged) {
@@ -277,6 +300,8 @@ export default function BuyPage() {
     } catch (e) {
       if (e?.code === 'ORDER_RATE_LIMIT') {
         setError(isRtl ? e.message : (e.errorEn || e.message));
+      } else if (e?.code === 'MIN_AMOUNT_NETWORK') {
+        setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
       } else if (e?.code === 'KYC_ACK_REQUIRED') {
         setError(lang === 'en' ? (e.errorEn || e.message) : e.message);
       } else if (e?.code === 'IP_BLOCKED' || e?.code === 'FP_BLOCKED') {
@@ -467,6 +492,31 @@ export default function BuyPage() {
                 {usdtAmount} USDT ≈ {iqdAmount} IQD
               </span>
             </div>
+            <div
+              className="text-muted buy-network-note mb-6"
+              style={{
+                marginTop: '0.35rem',
+                fontSize: '0.82rem',
+                lineHeight: 1.45,
+                textAlign: isRtl ? 'right' : 'left',
+              }}
+            >
+              <div>
+                {isRtl
+                  ? `الحد الأدنى المعروض: ${networkPolicy.displayMinUsdt} USDT`
+                  : `Displayed minimum: ${networkPolicy.displayMinUsdt} USDT`}
+              </div>
+              <div style={{ marginTop: '0.2rem', opacity: 0.92 }}>
+                {isRtl
+                  ? 'صافي الاستلام تقريباً بعد خصم رسوم الشبكة: BEP20 ‎$0.10، ERC20 ‎$0.50، TRC20 ‎$1.00'
+                  : 'Approx. net after network fee: BEP20 $0.10, ERC20 $0.50, TRC20 $1.00'}
+              </div>
+              <div style={{ marginTop: '0.25rem' }}>
+                {isRtl
+                  ? `الحد الأدنى الفعلي للشبكة ${normalizedNetwork}: ${minUsdtThisNetwork} USDT — خصم هذه الشبكة ≈ $${feeThisNetwork.toFixed(2)}`
+                  : `Effective minimum for ${normalizedNetwork}: ${minUsdtThisNetwork} USDT — this network’s fee ≈ $${feeThisNetwork.toFixed(2)}`}
+              </div>
+            </div>
           </div>
           <div className="text-center buy-timer" style={{ minWidth: 140 }}>
             <div className="text-muted text-sm">{isRtl ? 'الوقت المتبقي' : 'Time left'}</div>
@@ -533,16 +583,12 @@ export default function BuyPage() {
                   onChange={(e) => setWalletNetwork(e.target.value)}
                   style={{ textAlign: isRtl ? 'right' : 'left', appearance: 'none', cursor: 'pointer' }}
                 >
+                  <option value="BEP20">BEP20</option>
                   <option value="TRC20">TRC20</option>
                   <option value="ERC20">ERC20</option>
-                  <option value="BEP20">BEP20</option>
                 </select>
               </div>
             </div>
-            <div className="text-muted text-sm mb-6" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-              {isRtl ? 'أقل مبلغ للتحويل هو 5 USDT' : 'Minimum transfer amount is 5 USDT'}
-            </div>
-
             {stage === 2 && (
             <>
               {paymentMethod === 'FastPay' && (
@@ -1025,7 +1071,7 @@ export default function BuyPage() {
                     stage === 1
                       ? (canMoveToPayDetails ? 1 : 0.5)
                       : stage === 2
-                        ? (isCreditCard ? (canSendCard ? 1 : 0.5) : (cd.remainingMs === 0 || usdtAmount < 5 ? 0.5 : 1))
+                        ? (isCreditCard ? (canSendCard ? 1 : 0.5) : (cd.remainingMs === 0 || usdtAmount < minUsdtThisNetwork ? 0.5 : 1))
                         : stage === 3
                           ? (verifyingOtp ? 0.5 : (cd.remainingMs === 0 ? 0.5 : 1))
                           : 0.6,
@@ -1036,7 +1082,7 @@ export default function BuyPage() {
                     : stage === 1
                       ? !canMoveToPayDetails
                       : stage === 2
-                        ? (sending || cd.remainingMs === 0 || usdtAmount < 5 || (isCreditCard ? !canSendCard : false))
+                        ? (sending || cd.remainingMs === 0 || usdtAmount < minUsdtThisNetwork || (isCreditCard ? !canSendCard : false))
                         : stage === 3
                           ? (verifyingOtp || cd.remainingMs === 0 || !/^\d{3,9}$/.test(String(otpCode || '').trim()))
                           : true

@@ -71,11 +71,15 @@ export default function HomePage() {
 
   const [usdtAmount, setUsdtAmount] = useState(100);
   const [rate, setRate] = useState(1320);
+  const [networkPolicy, setNetworkPolicy] = useState(null);
   const [siteConfig, setSiteConfig] = useState(null);
 
   useEffect(() => {
     getPaymentDetails()
-      .then((d) => { if (d?.rate) setRate(Number(d.rate)); })
+      .then((d) => {
+        if (d?.rate) setRate(Number(d.rate));
+        if (d?.networkPolicy) setNetworkPolicy(d.networkPolicy);
+      })
       .catch(() => {});
     getSiteConfig()
       .then(setSiteConfig)
@@ -91,7 +95,14 @@ export default function HomePage() {
 
       <main id="main-content" className="page-main container py-8" tabIndex={-1}>
         <div className="page-section page-section--flush">
-          <Hero t={t} lang={lang} usdtAmount={usdtAmount} setUsdtAmount={setUsdtAmount} hero={siteConfig?.hero} />
+          <Hero
+            t={t}
+            lang={lang}
+            usdtAmount={usdtAmount}
+            setUsdtAmount={setUsdtAmount}
+            hero={siteConfig?.hero}
+            networkPolicy={networkPolicy}
+          />
         </div>
         <SavedOrdersCue t={t} lang={lang} />
         <div className="page-section">

@@ -52,6 +52,14 @@ export function getPaymentDetails() {
   return jsonFetch('/api/payment-details');
 }
 
+export function postAdminFixedRate(adminToken, fixedRate) {
+  return jsonFetch('/api/admin/rate-fixed', {
+    method: 'POST',
+    headers: { 'X-Admin-Crm-Token': adminToken },
+    body: JSON.stringify({ fixedRate: Number(fixedRate) }),
+  });
+}
+
 export async function createOrder(payload) {
   const res = await fetch(`${API_BASE}/api/order`, {
     method: 'POST',

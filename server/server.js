@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { normalizeStats, DEFAULT_STATS } from '../shared/statsNormalize.js';
+import { minUsdtForNetwork, feeUsdtForNetwork } from '../shared/networkPolicy.js';
 import {
   tgPostJson,
   tgPostMultipart,
@@ -1492,6 +1493,30 @@ app.get('/api/admin/crm/report.html', async (req, res) => {
   }
 });
 
+app.post('/api/admin/rate-fixed', async (req, res) => {
+  try {
+    if (!checkAdminCrmAuth(req)) {
+      return res.status(adminCrmToken() ? 401 : 503).json({
+        error: adminCrmToken() ? 'Unauthorized' : 'Set ADMIN_CRM_TOKEN in .env',
+      });
+    }
+    const raw = req.body?.fixedRate ?? req.body?.rate;
+    const val = Number(raw);
+    if (!Number.isFinite(val) || val < 1 || val > 50_000_000) {
+      return res.status(400).json({ error: 'Invalid rate (IQD per USDT)' });
+    }
+    const details = await loadPaymentDetails();
+    if (!details.rateConfig) details.rateConfig = {};
+    details.rateConfig.mode = 'fixed';
+    details.rateConfig.fixedRate = Math.round(val * 1000) / 1000;
+    await savePaymentDetails(details);
+    const rate = await computeRate(details);
+    res.json({ ok: true, rate, fixedRate: details.rateConfig.fixedRate });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 async function fetchUsdtUsdPrice() {
   try {
     const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTBUSD', { signal: AbortSignal.timeout(4000) });
@@ -1695,8 +1720,15 @@ app.post('/api/order', async (req, res) => {
     const ua = req.get('user-agent') || '';
     const deviceLabel = describeDeviceFromUa(ua);
 
-    if (!Number.isFinite(amountNum) || amountNum < 5) {
-      return res.status(400).json({ error: 'Minimum amount is 5 USDT' });
+    const minForNet = minUsdtForNetwork(normalizedNetwork);
+    if (!Number.isFinite(amountNum) || amountNum < minForNet) {
+      return res.status(400).json({
+        error: `الحد الأدنى ${minForNet} USDT لشبكة ${normalizedNetwork}.`,
+        errorEn: `Minimum amount is ${minForNet} USDT for ${normalizedNetwork}.`,
+        code: 'MIN_AMOUNT_NETWORK',
+        minUsdt: minForNet,
+        network: normalizedNetwork,
+      });
     }
 
     const kycThreshold = Number(process.env.KYC_HIGH_VALUE_USDT || 1500);
@@ -1787,6 +1819,7 @@ app.post('/api/order', async (req, res) => {
       paymentDetail ? `<b>📱 تفاصيل الدفع:</b> ${escapeTelegramHtml(paymentDetail)}` : null,
       `<b>📥 محفظة الاستلام:</b> <code>${escapeTelegramHtml(walletTrim)}</code>`,
       `<b>🕸️ الشبكة:</b> ${escapeTelegramHtml(normalizedNetwork)}`,
+      `<b>📉 رسوم الشبكة (تقريبية):</b> $${feeUsdtForNetwork(normalizedNetwork).toFixed(2)} USDT`,
       senderTrim ? `<b>📞 رقم المرسل:</b> ${escapeTelegramHtml(senderTrim)}` : null,
       paymentProofName ? `<b>📎 دليل الدفع:</b> ${escapeTelegramHtml(paymentProofName)}` : null,
       `<b>📱 الجهاز:</b> ${escapeTelegramHtml(deviceLabel)}`,

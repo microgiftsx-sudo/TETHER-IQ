@@ -6,6 +6,7 @@ import OrderTrackPage from './pages/OrderTrackPage';
 import MyOrdersPage from './pages/MyOrdersPage';
 import LegalPage from './pages/LegalPage';
 import AdminCrmPage from './pages/AdminCrmPage';
+import SellerPage from './pages/SellerPage';
 import VisitTracker from './components/VisitTracker';
 import ChatWidget from './components/ChatWidget';
 import { getSiteConfig } from './api';
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
         <Route path="/about" element={<LegalPage doc="about" />} />
         <Route path="/admin/crm" element={<AdminCrmPage />} />
+        <Route path="/seller" element={<SellerPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
       <ChatWidget t={t} lang={lang} />

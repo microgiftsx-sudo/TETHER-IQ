@@ -3,6 +3,8 @@
  * The site shows `currentProfileId`; only methods with methodEnabled[key] !== false are exposed in the API.
  */
 
+import { NETWORK_POLICY } from '../shared/networkPolicy.js';
+
 export const METHOD_KEYS = ['creditCard', 'fastPay', 'zainCash', 'asiaHawala', 'fib', 'mastercard'];
 
 export function defaultMethodEnabled() {
@@ -105,6 +107,7 @@ export function buildPublicPaymentPayload(details, rate) {
       activeProfile: null,
       methodEnabled: {},
       rate,
+      networkPolicy: NETWORK_POLICY,
     };
   }
 
@@ -131,6 +134,7 @@ export function buildPublicPaymentPayload(details, rate) {
     },
     methodEnabled: { ...profile.methodEnabled },
     rate,
+    networkPolicy: NETWORK_POLICY,
   };
 }
 
