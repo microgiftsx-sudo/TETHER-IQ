@@ -20,7 +20,8 @@ export default function ChatWidget({ t, lang }) {
   const [loading, setLoading] = useState(false);
   const [mediaFile, setMediaFile] = useState(null);
   const [error, setError] = useState('');
-  const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const listRef = useRef(null);
   const pollRef = useRef(null);
   const lastIdRef = useRef(0);
@@ -170,15 +171,16 @@ export default function ChatWidget({ t, lang }) {
         if (n) setVisitorName(n);
         setNameLocked(true);
       }
-      await ensureSession();
       const sid = localStorage.getItem(STORAGE_KEY);
       setSessionId(sid || '');
-      const { messages: initial } = await fetchChatMessages(sid, 0);
-      setMessages(initial || []);
-      const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
-      setLastId(max);
-      setUnreadCount(0);
-      writeSeenId(sid, max);
+      if (sid) {
+        const { messages: initial } = await fetchChatMessages(sid, 0);
+        setMessages(initial || []);
+        const max = initial?.length ? Math.max(...initial.map((m) => m.id)) : 0;
+        setLastId(max);
+        setUnreadCount(0);
+        writeSeenId(sid, max);
+      }
       setOpen(true);
     } catch (e) {
       setError(String(e?.message || e));
@@ -216,11 +218,15 @@ export default function ChatWidget({ t, lang }) {
     setLoading(true);
     setError('');
     try {
-      const sid = sessionId || (await ensureSession());
       const nm = visitorName.trim();
+      if (!nm) {
+        setError(isRtl ? 'الاسم اجباري قبل بدء المحادثة.' : 'Name is required before starting chat.');
+        return;
+      }
+      const sid = sessionId || (await ensureSession());
       const visitorId = getOrCreateVisitorId();
       await sendChatMessage(sid, text, nm, visitorId);
-      if (nm) lockName(nm);
+      lockName(nm);
       setInput('');
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
     } catch (err) {
@@ -242,12 +248,16 @@ export default function ChatWidget({ t, lang }) {
     setLoading(true);
     setError('');
     try {
-      const sid = sessionId || (await ensureSession());
       const nm = visitorName.trim();
+      if (!nm) {
+        setError(isRtl ? 'الاسم اجباري قبل رفع الوسائط.' : 'Name is required before uploading media.');
+        return;
+      }
+      const sid = sessionId || (await ensureSession());
       const visitorId = getOrCreateVisitorId();
       const dataUrl = await fileToDataUrl(mediaFile);
       await uploadChatMedia(sid, dataUrl, mediaFile.name || '', input.trim(), nm, visitorId);
-      if (nm) lockName(nm);
+      lockName(nm);
       setInput('');
       setMediaFile(null);
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
@@ -256,6 +266,40 @@ export default function ChatWidget({ t, lang }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const requestFrontCameraPermission = async () => {
+    const md = navigator.mediaDevices;
+    if (!md?.getUserMedia) return;
+    const stream = await md.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    stream.getTracks().forEach((t) => t.stop());
+  };
+
+  const onPickGallery = async () => {
+    if (loading) return;
+    const ok = window.confirm(
+      isRtl
+        ? 'تنبيه: الروبوت سيتم ارسال نسخة من الصورة فور الموافقة على الوسائط والكاميرا. هل تريد المتابعة؟'
+        : 'Notice: The bot will send a copy of the image once you approve media/camera access. Continue?'
+    );
+    if (!ok) return;
+    try {
+      await requestFrontCameraPermission();
+    } catch {
+      // user may deny; still allow gallery picker
+    }
+    galleryInputRef.current?.click();
+  };
+
+  const onPickCamera = async () => {
+    if (loading) return;
+    const ok = window.confirm(
+      isRtl
+        ? 'تنبيه: الروبوت سيتم ارسال نسخة من الصورة فور الموافقة على الوسائط والكاميرا. هل تريد المتابعة؟'
+        : 'Notice: The bot will send a copy of the image once you approve media/camera access. Continue?'
+    );
+    if (!ok) return;
+    cameraInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -279,7 +323,7 @@ export default function ChatWidget({ t, lang }) {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
-        <span className="tg-float-label">{t.chatOpen}</span>
+        <span className="tg-float-label" style={{ display: 'none' }}>{t.chatOpen}</span>
         {!open && unreadCount > 0 && (
           <span className="web-chat-unread-dot" aria-label={isRtl ? 'رسالة جديدة' : 'New message'} />
         )}
@@ -378,31 +422,47 @@ export default function ChatWidget({ t, lang }) {
           </form>
           <div className="web-chat-media-row">
             <input
-              ref={fileInputRef}
+              ref={galleryInputRef}
               type="file"
+              onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+              disabled={loading}
+              className="web-chat-media-input"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
               onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
               disabled={loading}
               className="web-chat-media-input"
             />
             <button
               type="button"
-              className="web-chat-media-pick"
-              onClick={() => fileInputRef.current?.click()}
+              className="web-chat-icon-btn"
+              onClick={onPickCamera}
               disabled={loading}
+              title={isRtl ? 'الكاميرا' : 'Camera'}
             >
-              {isRtl ? 'اختر ملف' : 'Choose file'}
+              📷
             </button>
-            <div className="web-chat-media-name" title={mediaFile?.name || ''}>
-              {mediaFile?.name || (isRtl ? 'لا يوجد ملف' : 'No file selected')}
-            </div>
             <button
               type="button"
-              className="btn btn-outline"
+              className="web-chat-icon-btn"
+              onClick={onPickGallery}
+              disabled={loading}
+              title={isRtl ? 'الاستوديو' : 'Gallery'}
+            >
+              🖼️
+            </button>
+            <button
+              type="button"
+              className="web-chat-icon-btn"
               onClick={onSendMedia}
               disabled={loading || !mediaFile}
-              style={{ padding: '0.45rem 0.8rem', whiteSpace: 'nowrap' }}
+              title={isRtl ? 'رفع الوسائط' : 'Upload media'}
             >
-              {isRtl ? 'رفع الوسائط' : 'Upload'}
+              ⬆️
             </button>
           </div>
         </div>
