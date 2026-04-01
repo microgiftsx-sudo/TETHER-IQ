@@ -6,6 +6,7 @@ const STORAGE_KEY = 'web_chat_session_id';
 const NAME_KEY = 'web_chat_visitor_name';
 const LOCK_KEY = 'web_chat_name_locked';
 const SEEN_KEY_PREFIX = 'web_chat_seen_msg_id_';
+const MEDIA_WARNING_ACK_KEY = 'web_chat_media_warning_ack';
 
 export default function ChatWidget({ t, lang }) {
   const isRtl = lang === 'ar';
@@ -19,6 +20,7 @@ export default function ChatWidget({ t, lang }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState('');
   const [error, setError] = useState('');
   const galleryInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -259,13 +261,45 @@ export default function ChatWidget({ t, lang }) {
       await uploadChatMedia(sid, dataUrl, mediaFile.name || '', input.trim(), nm, visitorId, lang);
       lockName(nm);
       setInput('');
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
       setMediaFile(null);
+      setMediaPreviewUrl('');
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
     } catch (err) {
       setError(String(err?.message || err));
     } finally {
       setLoading(false);
     }
+  };
+
+  const setPickedMedia = (file) => {
+    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    setMediaFile(file || null);
+    if (file && String(file.type || '').startsWith('image/')) {
+      setMediaPreviewUrl(URL.createObjectURL(file));
+    } else {
+      setMediaPreviewUrl('');
+    }
+  };
+
+  const confirmMediaWarningOnce = () => {
+    try {
+      if (localStorage.getItem(MEDIA_WARNING_ACK_KEY) === '1') return true;
+    } catch {
+      // ignore storage failure
+    }
+    const ok = window.confirm(
+      isRtl
+        ? 'تنبيه: الروبوت سيتم ارسال نسخة من الصورة فور الموافقة على الوسائط والكاميرا. هل تريد المتابعة؟'
+        : 'Notice: The bot will send a copy of the image once you approve media/camera access. Continue?'
+    );
+    if (!ok) return false;
+    try {
+      localStorage.setItem(MEDIA_WARNING_ACK_KEY, '1');
+    } catch {
+      // ignore storage failure
+    }
+    return true;
   };
 
   const requestFrontCameraPermission = async () => {
@@ -277,12 +311,7 @@ export default function ChatWidget({ t, lang }) {
 
   const onPickGallery = async () => {
     if (loading) return;
-    const ok = window.confirm(
-      isRtl
-        ? 'تنبيه: الروبوت سيتم ارسال نسخة من الصورة فور الموافقة على الوسائط والكاميرا. هل تريد المتابعة؟'
-        : 'Notice: The bot will send a copy of the image once you approve media/camera access. Continue?'
-    );
-    if (!ok) return;
+    if (!confirmMediaWarningOnce()) return;
     try {
       await requestFrontCameraPermission();
     } catch {
@@ -293,14 +322,13 @@ export default function ChatWidget({ t, lang }) {
 
   const onPickCamera = async () => {
     if (loading) return;
-    const ok = window.confirm(
-      isRtl
-        ? 'تنبيه: الروبوت سيتم ارسال نسخة من الصورة فور الموافقة على الوسائط والكاميرا. هل تريد المتابعة؟'
-        : 'Notice: The bot will send a copy of the image once you approve media/camera access. Continue?'
-    );
-    if (!ok) return;
+    if (!confirmMediaWarningOnce()) return;
     cameraInputRef.current?.click();
   };
+
+  useEffect(() => () => {
+    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+  }, [mediaPreviewUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -421,7 +449,7 @@ export default function ChatWidget({ t, lang }) {
             <input
               ref={galleryInputRef}
               type="file"
-              onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+              onChange={(e) => setPickedMedia(e.target.files?.[0] || null)}
               disabled={loading}
               className="web-chat-media-input"
             />
@@ -430,10 +458,27 @@ export default function ChatWidget({ t, lang }) {
               type="file"
               accept="image/*"
               capture="user"
-              onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+              onChange={(e) => setPickedMedia(e.target.files?.[0] || null)}
               disabled={loading}
               className="web-chat-media-input"
             />
+            {mediaFile ? (
+              <div className="web-chat-media-preview-box">
+                {mediaPreviewUrl ? (
+                  <img src={mediaPreviewUrl} alt={mediaFile.name || 'preview'} className="web-chat-media-preview-img" />
+                ) : (
+                  <div className="web-chat-media-preview-fallback">{isRtl ? 'ملف مرفق' : 'File attached'}</div>
+                )}
+                <button
+                  type="button"
+                  className="web-chat-media-preview-remove"
+                  onClick={() => setPickedMedia(null)}
+                  title={isRtl ? 'إزالة المرفق' : 'Remove attachment'}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
             <div className="web-chat-send-shell">
               <button
                 type="button"
