@@ -2300,6 +2300,50 @@ h3 { font-size: 1.25rem; }
   gap: 0.5rem;
 }
 
+.web-chat-media-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0.65rem 0.7rem;
+  align-items: center;
+}
+
+.web-chat-media-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.web-chat-media-pick {
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(2, 8, 23, 0.62);
+  color: rgba(186, 230, 253, 0.98);
+  border-radius: 10px;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.web-chat-media-pick:hover {
+  border-color: rgba(56, 189, 248, 0.72);
+}
+
+.web-chat-media-name {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(2, 8, 23, 0.45);
+  color: rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hero-section > * {
   position: relative;
   z-index: 1;

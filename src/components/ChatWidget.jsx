@@ -20,6 +20,7 @@ export default function ChatWidget({ t, lang }) {
   const [loading, setLoading] = useState(false);
   const [mediaFile, setMediaFile] = useState(null);
   const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
   const listRef = useRef(null);
   const pollRef = useRef(null);
   const lastIdRef = useRef(0);
@@ -375,19 +376,31 @@ export default function ChatWidget({ t, lang }) {
               {loading ? '…' : t.chatSend}
             </button>
           </form>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+          <div className="web-chat-media-row">
             <input
+              ref={fileInputRef}
               type="file"
               onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
               disabled={loading}
-              style={{ flex: 1, fontSize: '0.8rem' }}
+              className="web-chat-media-input"
             />
+            <button
+              type="button"
+              className="web-chat-media-pick"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+            >
+              {isRtl ? 'اختر ملف' : 'Choose file'}
+            </button>
+            <div className="web-chat-media-name" title={mediaFile?.name || ''}>
+              {mediaFile?.name || (isRtl ? 'لا يوجد ملف' : 'No file selected')}
+            </div>
             <button
               type="button"
               className="btn btn-outline"
               onClick={onSendMedia}
               disabled={loading || !mediaFile}
-              style={{ padding: '0.45rem 0.8rem' }}
+              style={{ padding: '0.45rem 0.8rem', whiteSpace: 'nowrap' }}
             >
               {isRtl ? 'رفع الوسائط' : 'Upload'}
             </button>

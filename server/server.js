@@ -210,6 +210,15 @@ async function notifyWebChatToTelegram(sessionId, userText, visitorName, clientI
   return data.result.message_id;
 }
 
+function resolvePublicBaseUrl(req) {
+  const envBase = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || '').trim();
+  if (envBase) return envBase.replace(/\/+$/, '');
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || req.protocol || 'https';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (!host) return '';
+  return `${proto}://${host}`.replace(/\/+$/, '');
+}
+
 const app = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
 
@@ -1080,19 +1089,33 @@ app.post('/api/chat/media', async (req, res) => {
     if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
 
     const media = await saveChatMediaDataUrl(dataUrl, fileName);
+    const publicBase = resolvePublicBaseUrl(req);
+    const mediaPublicUrl = publicBase ? `${publicBase}${media.mediaUrl}` : media.mediaUrl;
+    const mediaForStore = { ...media, mediaUrl: mediaPublicUrl };
     const fallbackText = caption || (media.mediaType.startsWith('image/') ? 'صورة مرفقة' : 'ملف مرفق');
-    appendUserMessage(store, sessionId, fallbackText, visitorName, media);
+    appendUserMessage(store, sessionId, fallbackText, visitorName, mediaForStore);
 
     if (sess.meta.handoffToStaff) {
-      const msgForStaff = `وسائط من العميل: ${fallbackText}\nالنوع: ${media.mediaType}\nالرابط: ${media.mediaUrl}`;
+      const msgForStaff = `وسائط من العميل: ${fallbackText}\nالنوع: ${media.mediaType}\nالرابط: ${mediaPublicUrl}`;
       const tgMsgId = await notifyWebChatToTelegram(sessionId, msgForStaff, visitorName, clientIp, visitorFingerprint);
       if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
+      if (media.mediaType.startsWith('image/') && /^https?:\/\//i.test(mediaPublicUrl)) {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = telegramSupportChatId();
+        if (botToken && chatId) {
+          await tgPostJson(botToken, 'sendPhoto', {
+            chat_id: telegramChatIdForApi(chatId),
+            photo: mediaPublicUrl,
+            caption: `🖼️ ${fallbackText}`.slice(0, 900),
+          });
+        }
+      }
     } else {
       appendStaffMessage(store, sessionId, 'تم استلام الوسائط. اذا ترغب بالتحويل لموظف اكتب: تحويل لخدمة العملاء.');
     }
 
     await saveChatStore(CHAT_PATH, store);
-    res.json({ ok: true, mediaUrl: media.mediaUrl, mediaType: media.mediaType });
+    res.json({ ok: true, mediaUrl: mediaPublicUrl, mediaType: media.mediaType });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
