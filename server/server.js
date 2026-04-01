@@ -962,6 +962,7 @@ app.get('/api/testimonials', async (_req, res) => {
 
 app.post('/api/chat/session', async (_req, res) => {
   try {
+    const lang = String(_req.body?.lang || 'ar').trim().toLowerCase() === 'en' ? 'en' : 'ar';
     const store = await loadChatStore(CHAT_PATH);
     const sessionId = newSessionId();
     ensureSession(store, sessionId, '');
@@ -970,10 +971,13 @@ app.post('/api/chat/session', async (_req, res) => {
     if (sess) {
       if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
       sess.meta.handoffToStaff = false;
+      sess.meta.lang = lang;
       appendStaffMessage(
         store,
         sessionId,
-        'اهلا بك في خدمة العملاء. اكتب طلبك وساساعدك الان. اذا رغبت بالتحويل الى موظف، اكتب: تحويل لخدمة العملاء.'
+        lang === 'en'
+          ? 'Welcome to customer support. Tell me what you need and I will assist you. If you want a human agent, type: transfer to customer service.'
+          : 'اهلا بك في خدمة العملاء. اكتب طلبك وساساعدك الان. اذا رغبت بالتحويل الى موظف، اكتب: تحويل لخدمة العملاء.'
       );
     }
     await saveChatStore(CHAT_PATH, store);
@@ -1006,6 +1010,7 @@ app.post('/api/chat/message', async (req, res) => {
     const body = req.body || {};
     const sessionId = String(body.sessionId || '').trim();
     const text = String(body.text || '').trim();
+    const preferredLang = String(body.lang || '').trim().toLowerCase() === 'en' ? 'en' : 'ar';
     const visitorName = String(body.visitorName || '').trim().slice(0, 80);
     const visitorFingerprint = normalizeFingerprintInput(body.visitorId || '');
     const clientIp = getClientIpFromRequest(req);
@@ -1036,6 +1041,7 @@ app.post('/api/chat/message', async (req, res) => {
 
     const sess = store.sessions[sessionId];
     if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
+    sess.meta.lang = preferredLang || sess.meta.lang || 'ar';
     const alreadyHandedOff = Boolean(sess.meta.handoffToStaff);
 
     appendUserMessage(store, sessionId, text, visitorName);
@@ -1052,7 +1058,9 @@ app.post('/api/chat/message', async (req, res) => {
       appendStaffMessage(
         store,
         sessionId,
-        'تم تحويلك الى موظف خدمة العملاء. يرجى الانتظار وسيتم الرد عليك قريبا.'
+        sess.meta.lang === 'en'
+          ? 'You have been transferred to a customer service agent. Please wait for a reply.'
+          : 'تم تحويلك الى موظف خدمة العملاء. يرجى الانتظار وسيتم الرد عليك قريبا.'
       );
       const tgMsgId = await notifyWebChatToTelegram(
         sessionId,
@@ -1067,13 +1075,15 @@ app.post('/api/chat/message', async (req, res) => {
     }
 
     try {
-      const aiReply = await generateCustomerServiceAiReply(text, visitorName);
+      const aiReply = await generateCustomerServiceAiReply(text, visitorName, sess.meta.lang || 'ar');
       appendStaffMessage(store, sessionId, aiReply);
     } catch {
       appendStaffMessage(
         store,
         sessionId,
-        'واجهنا تاخيرا مؤقتا. اعد المحاولة، او اكتب تحويل لخدمة العملاء للتحويل لموظف.'
+        sess.meta.lang === 'en'
+          ? 'We are experiencing a temporary delay. Please try again, or type: transfer to customer service.'
+          : 'واجهنا تاخيرا مؤقتا. اعد المحاولة، او اكتب تحويل لخدمة العملاء للتحويل لموظف.'
       );
     }
 
@@ -1123,6 +1133,7 @@ app.post('/api/chat/media', async (req, res) => {
     const dataUrl = String(body.dataUrl || '').trim();
     const fileName = String(body.fileName || '').trim();
     const caption = String(body.caption || '').trim().slice(0, 600);
+    const preferredLang = String(body.lang || '').trim().toLowerCase() === 'en' ? 'en' : 'ar';
     const visitorName = String(body.visitorName || '').trim().slice(0, 80);
     const visitorFingerprint = normalizeFingerprintInput(body.visitorId || '');
     const clientIp = getClientIpFromRequest(req);
@@ -1140,6 +1151,7 @@ app.post('/api/chat/media', async (req, res) => {
     const sess = store.sessions[sessionId];
     if (!sess) return res.status(404).json({ error: 'Session not found' });
     if (!sess.meta || typeof sess.meta !== 'object') sess.meta = {};
+    sess.meta.lang = preferredLang || sess.meta.lang || 'ar';
 
     const media = await saveChatMediaDataUrl(dataUrl, fileName);
     const publicBase = resolvePublicBaseUrl(req);
@@ -1159,7 +1171,13 @@ app.post('/api/chat/media', async (req, res) => {
       );
       if (tgMsgId) bindTelegramMessage(store, tgMsgId, sessionId);
     } else {
-      appendStaffMessage(store, sessionId, 'تم استلام الوسائط. اذا ترغب بالتحويل لموظف اكتب: تحويل لخدمة العملاء.');
+      appendStaffMessage(
+        store,
+        sessionId,
+        sess.meta.lang === 'en'
+          ? 'Media received. If you want a human agent, type: transfer to customer service.'
+          : 'تم استلام الوسائط. اذا ترغب بالتحويل لموظف اكتب: تحويل لخدمة العملاء.'
+      );
     }
 
     await saveChatStore(CHAT_PATH, store);
@@ -1177,7 +1195,7 @@ function wantsCustomerServiceTransfer(text) {
   return false;
 }
 
-async function generateCustomerServiceAiReply(userText, visitorName = '') {
+async function generateCustomerServiceAiReply(userText, visitorName = '', lang = 'ar') {
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
 
@@ -1191,15 +1209,26 @@ async function generateCustomerServiceAiReply(userText, visitorName = '') {
   const input = String(userText || '').trim().slice(0, 2000);
   if (!input) throw new Error('Empty message');
 
-  const prompt = [
-    'انت مساعد خدمة عملاء لموقع تبادل USDT.',
-    'المطلوب: افهم طلب العميل ثم قدم رد مختصر ومفيد وواضح.',
-    'اذا كان الطلب يحتاج موظف بشري، اطلب منه كتابة: تحويل لخدمة العملاء.',
-    'لا تذكر اي تفاصيل تقنية داخلية.',
-    '',
-    `اسم العميل: ${customerName || 'غير مذكور'}`,
-    `رسالة العميل: ${input}`,
-  ].join('\n');
+  const isEn = String(lang || '').toLowerCase() === 'en';
+  const prompt = isEn
+    ? [
+      'You are a customer support assistant for a USDT exchange website.',
+      'Understand the customer request and provide a short, helpful, clear reply in English.',
+      'If human support is needed, ask the customer to type: transfer to customer service.',
+      'Do not mention internal technical details.',
+      '',
+      `Customer name: ${customerName || 'Not provided'}`,
+      `Customer message: ${input}`,
+    ].join('\n')
+    : [
+      'انت مساعد خدمة عملاء لموقع تبادل USDT.',
+      'المطلوب: افهم طلب العميل ثم قدم رد مختصر ومفيد وواضح باللغة العربية.',
+      'اذا كان الطلب يحتاج موظف بشري، اطلب منه كتابة: تحويل لخدمة العملاء.',
+      'لا تذكر اي تفاصيل تقنية داخلية.',
+      '',
+      `اسم العميل: ${customerName || 'غير مذكور'}`,
+      `رسالة العميل: ${input}`,
+    ].join('\n');
 
   let lastError = 'Unknown AI error';
   for (const model of modelCandidates) {

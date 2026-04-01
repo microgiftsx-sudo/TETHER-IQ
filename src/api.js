@@ -134,14 +134,14 @@ export function getTestimonials() {
   return jsonFetch('/api/testimonials');
 }
 
-export function createChatSession() {
-  return jsonFetch('/api/chat/session', { method: 'POST', body: '{}' });
+export function createChatSession(lang = 'ar') {
+  return jsonFetch('/api/chat/session', { method: 'POST', body: JSON.stringify({ lang }) });
 }
 
-export function sendChatMessage(sessionId, text, visitorName = '', visitorId = '') {
+export function sendChatMessage(sessionId, text, visitorName = '', visitorId = '', lang = 'ar') {
   return jsonFetch('/api/chat/message', {
     method: 'POST',
-    body: JSON.stringify({ sessionId, text, visitorName, visitorId }),
+    body: JSON.stringify({ sessionId, text, visitorName, visitorId, lang }),
   });
 }
 
@@ -149,10 +149,10 @@ export function fetchChatMessages(sessionId, after = 0) {
   return jsonFetch(`/api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&after=${after}`);
 }
 
-export function uploadChatMedia(sessionId, dataUrl, fileName = '', caption = '', visitorName = '', visitorId = '') {
+export function uploadChatMedia(sessionId, dataUrl, fileName = '', caption = '', visitorName = '', visitorId = '', lang = 'ar') {
   return jsonFetch('/api/chat/media', {
     method: 'POST',
-    body: JSON.stringify({ sessionId, dataUrl, fileName, caption, visitorName, visitorId }),
+    body: JSON.stringify({ sessionId, dataUrl, fileName, caption, visitorName, visitorId, lang }),
   });
 }
 

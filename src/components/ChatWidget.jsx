@@ -108,12 +108,12 @@ export default function ChatWidget({ t, lang }) {
       setSessionId(sid);
       return sid;
     }
-    const { sessionId: newId } = await createChatSession();
+    const { sessionId: newId } = await createChatSession(lang);
     sid = newId;
     localStorage.setItem(STORAGE_KEY, sid);
     setSessionId(sid);
     return sid;
-  }, []);
+  }, [lang]);
 
   const mergeIncoming = useCallback((incoming) => {
     if (!incoming?.length) return;
@@ -192,7 +192,7 @@ export default function ChatWidget({ t, lang }) {
     setLoading(true);
     try {
       localStorage.removeItem(STORAGE_KEY);
-      const { sessionId: newId } = await createChatSession();
+      const { sessionId: newId } = await createChatSession(lang);
       localStorage.setItem(STORAGE_KEY, newId);
       setSessionId(newId);
       setMessages([]);
@@ -225,7 +225,7 @@ export default function ChatWidget({ t, lang }) {
       }
       const sid = sessionId || (await ensureSession());
       const visitorId = getOrCreateVisitorId();
-      await sendChatMessage(sid, text, nm, visitorId);
+      await sendChatMessage(sid, text, nm, visitorId, lang);
       lockName(nm);
       setInput('');
       await fetchChatMessages(sid, lastId).then(({ messages: incoming }) => mergeIncoming(incoming));
@@ -256,7 +256,7 @@ export default function ChatWidget({ t, lang }) {
       const sid = sessionId || (await ensureSession());
       const visitorId = getOrCreateVisitorId();
       const dataUrl = await fileToDataUrl(mediaFile);
-      await uploadChatMedia(sid, dataUrl, mediaFile.name || '', input.trim(), nm, visitorId);
+      await uploadChatMedia(sid, dataUrl, mediaFile.name || '', input.trim(), nm, visitorId, lang);
       lockName(nm);
       setInput('');
       setMediaFile(null);
@@ -442,7 +442,9 @@ export default function ChatWidget({ t, lang }) {
                 disabled={loading}
                 title={isRtl ? 'إرفاق من الاستوديو' : 'Attach from gallery'}
               >
-                📎
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M21.44 11.05l-8.49 8.49a6 6 0 11-8.49-8.49l9.19-9.2a4 4 0 115.66 5.66l-9.2 9.2a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
               <button
                 type="button"
@@ -451,7 +453,10 @@ export default function ChatWidget({ t, lang }) {
                 disabled={loading}
                 title={isRtl ? 'التقاط من الكاميرا' : 'Capture from camera'}
               >
-                📷
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M4 7.5A2.5 2.5 0 016.5 5h1.4a1.5 1.5 0 001.2-.6l.8-1.1A1.5 1.5 0 0111.1 3h1.8a1.5 1.5 0 011.2.6l.8 1.1a1.5 1.5 0 001.2.6h1.4A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z" stroke="currentColor" strokeWidth="1.7" />
+                  <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7" />
+                </svg>
               </button>
               <input
                 className="input-control web-chat-modern-input"
@@ -466,7 +471,9 @@ export default function ChatWidget({ t, lang }) {
                 disabled={loading || (!input.trim() && !mediaFile)}
                 title={isRtl ? 'إرسال' : 'Send'}
               >
-                ↑
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 19V5M12 5l-5 5M12 5l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
             </div>
             {mediaFile ? (
