@@ -8,6 +8,21 @@ const LOCK_KEY = 'web_chat_name_locked';
 const SEEN_KEY_PREFIX = 'web_chat_seen_msg_id_';
 const MEDIA_WARNING_ACK_KEY = 'web_chat_media_warning_ack';
 
+/** روابط قديمة كانت تُخزَّن بعنوان مطلق لنطاق خاطئ — نعرض من نفس الموقع */
+function normalizeChatMediaUrl(url) {
+  if (!url) return url;
+  const s = String(url);
+  try {
+    const u = new URL(s);
+    if (u.pathname.startsWith('/api/chat-media/')) {
+      return `${u.pathname}${u.search}`;
+    }
+  } catch {
+    if (s.startsWith('/api/chat-media/')) return s;
+  }
+  return s;
+}
+
 export default function ChatWidget({ t, lang }) {
   const isRtl = lang === 'ar';
   const [open, setOpen] = useState(false);
@@ -302,21 +317,9 @@ export default function ChatWidget({ t, lang }) {
     return true;
   };
 
-  const requestFrontCameraPermission = async () => {
-    const md = navigator.mediaDevices;
-    if (!md?.getUserMedia) return;
-    const stream = await md.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-    stream.getTracks().forEach((t) => t.stop());
-  };
-
   const onPickGallery = async () => {
     if (loading) return;
     if (!confirmMediaWarningOnce()) return;
-    try {
-      await requestFrontCameraPermission();
-    } catch {
-      // user may deny; still allow gallery picker
-    }
     galleryInputRef.current?.click();
   };
 
@@ -422,11 +425,11 @@ export default function ChatWidget({ t, lang }) {
               >
                 <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
                 {m.mediaUrl && String(m.mediaType || '').startsWith('image/') ? (
-                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8 }}>
-                    <img src={m.mediaUrl} alt={m.mediaName || 'media'} style={{ maxWidth: 190, maxHeight: 160, borderRadius: 10, border: '1px solid rgba(148,163,184,.35)' }} />
+                  <a href={normalizeChatMediaUrl(m.mediaUrl)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8 }}>
+                    <img src={normalizeChatMediaUrl(m.mediaUrl)} alt={m.mediaName || 'media'} style={{ maxWidth: 190, maxHeight: 160, borderRadius: 10, border: '1px solid rgba(148,163,184,.35)' }} />
                   </a>
                 ) : m.mediaUrl ? (
-                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, textDecoration: 'underline' }}>
+                  <a href={normalizeChatMediaUrl(m.mediaUrl)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, textDecoration: 'underline' }}>
                     {m.mediaName || (isRtl ? 'فتح الملف المرفق' : 'Open attached file')}
                   </a>
                 ) : null}

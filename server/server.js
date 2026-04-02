@@ -228,7 +228,8 @@ async function notifyWebChatMediaToTelegram(sessionId, media, captionText, visit
   const safeCaptionText = String(captionText || '').trim();
   const caption = [metaLines.join('\n'), safeCaptionText].filter(Boolean).join('\n━━━━━━━━━━━━━━━\n').slice(0, 900);
   const modKb = await chatModerationInlineKeyboard(visitorFingerprint, clientIp);
-  const mediaUrl = String(media?.mediaUrl || '').trim();
+  const mediaUrlRaw = String(media?.mediaUrl || '').trim();
+  const mediaUrl = absoluteUrlForTelegramFetch(mediaUrlRaw) || mediaUrlRaw;
   const isImage = /^image\//i.test(String(media?.mediaType || ''));
 
   if (isImage && /^https?:\/\//i.test(mediaUrl)) {
@@ -273,6 +274,17 @@ function resolvePublicBaseUrl(req) {
   return `${proto}://${host}`.replace(/\/+$/, '');
 }
 
+/** مطلوب لتيليغرام sendPhoto عندما يكون mediaUrl نسبياً (/api/...) */
+function absoluteUrlForTelegramFetch(mediaUrl) {
+  const u = String(mediaUrl || '').trim();
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith('/')) {
+    const base = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (base) return `${base}${u}`;
+  }
+  return u;
+}
+
 const app = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
 
@@ -286,7 +298,7 @@ function applySecurityHeaders(req, res, next) {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=()',
+    'camera=(self), microphone=(self), geolocation=(), payment=()',
   );
   const xfProto = String(req.get('x-forwarded-proto') || '')
     .split(',')[0]
@@ -1156,15 +1168,18 @@ app.post('/api/chat/media', async (req, res) => {
 
     const media = await saveChatMediaDataUrl(dataUrl, fileName);
     const publicBase = resolvePublicBaseUrl(req);
-    const mediaPublicUrl = publicBase ? `${publicBase}${media.mediaUrl}` : media.mediaUrl;
-    const mediaForStore = { ...media, mediaUrl: mediaPublicUrl };
+    const mediaForStore = { ...media };
+    const mediaForTelegram = {
+      ...media,
+      mediaUrl: publicBase ? `${publicBase}${media.mediaUrl}` : absoluteUrlForTelegramFetch(media.mediaUrl),
+    };
     const fallbackText = caption || (media.mediaType.startsWith('image/') ? 'صورة مرفقة' : 'ملف مرفق');
     appendUserMessage(store, sessionId, fallbackText, visitorName, mediaForStore);
 
     if (sess.meta.handoffToStaff) {
       const tgMsgId = await notifyWebChatMediaToTelegram(
         sessionId,
-        mediaForStore,
+        mediaForTelegram,
         fallbackText,
         visitorName,
         clientIp,
@@ -1182,7 +1197,7 @@ app.post('/api/chat/media', async (req, res) => {
     }
 
     await saveChatStore(CHAT_PATH, store);
-    res.json({ ok: true, mediaUrl: mediaPublicUrl, mediaType: media.mediaType });
+    res.json({ ok: true, mediaUrl: mediaForStore.mediaUrl, mediaType: media.mediaType });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -4219,7 +4234,10 @@ async function registerTelegramCommands() {
 
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
-  app.use((_req, res) => {
+  app.use((req, res) => {
+    if (req.path.startsWith('/assets/')) {
+      return res.status(404).type('text/plain; charset=utf-8').send('Asset not found — upload full dist/ or hard-refresh');
+    }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
