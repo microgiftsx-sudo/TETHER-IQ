@@ -305,13 +305,13 @@ export function publicOrderTrackingPayload(o) {
   const ar = {
     received: 'قيد المعالجة',
     completed: 'تم الإكمال',
-    archived: 'مؤرشف',
+    archived: 'معلق',
     cancelled: 'ملغى',
   };
   const en = {
     received: 'Processing',
     completed: 'Completed',
-    archived: 'Archived',
+    archived: 'On hold',
     cancelled: 'Cancelled',
   };
   return {

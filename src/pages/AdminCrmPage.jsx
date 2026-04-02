@@ -259,7 +259,7 @@ export default function AdminCrmPage() {
                       <tr key={o.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         <td style={{ padding: '0.35rem', whiteSpace: 'nowrap' }}>{o.at?.slice(5, 16)}</td>
                         <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{o.orderId}</td>
-                        <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{o.status === 'completed' ? 'تم الإكمال' : o.status === 'archived' ? 'مؤرشف' : o.status === 'cancelled' ? 'ملغى' : 'قيد المعالجة'}</td>
+                        <td style={{ padding: '0.35rem', fontSize: '0.72rem' }}>{o.status === 'completed' ? 'تم الإكمال' : o.status === 'archived' ? 'معلق' : o.status === 'cancelled' ? 'ملغى' : 'قيد المعالجة'}</td>
                         <td style={{ padding: '0.35rem' }}>{o.name}</td>
                         <td style={{ padding: '0.35rem' }}>{o.usdtAmount}</td>
                       </tr>

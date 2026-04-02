@@ -1556,7 +1556,7 @@ function orderInlineKeyboard(businessOrderId, extraRows = []) {
     inline_keyboard: [
       [{ text: '✅ تم إكمال الطلب', callback_data: enc('d') }],
       [
-        { text: '📁 أرشفة', callback_data: enc('a') },
+        { text: '⏸ تعليق', callback_data: enc('a') },
         { text: '❌ إلغاء الطلب', callback_data: enc('c') },
       ],
       ...extraRows,
@@ -1569,7 +1569,7 @@ function orderStatusLabelAr(status) {
   const map = {
     received: 'قيد المعالجة',
     completed: 'تم الإكمال',
-    archived: 'مؤرشف',
+    archived: 'معلق',
     cancelled: 'ملغى',
   };
   return map[s] || s;
@@ -2142,7 +2142,7 @@ function helpText() {
     '🧾 الطلبات:',
     '/order ORD-xxx — عرض تفاصيل طلب كاملة + أزرار الحالة',
     'أو: /طلب ORD-xxx',
-    'عند طلب جديد: أزرار «تم الإكمال / أرشفة / إلغاء» تظهر للعميل في صفحة التتبع.',
+    'عند طلب جديد: أزرار «تم الإكمال / تعليق / إلغاء» تظهر للعميل في صفحة التتبع.',
     '',
     '🚫 حظر IP:',
     '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
