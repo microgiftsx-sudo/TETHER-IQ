@@ -1541,7 +1541,7 @@ async function computeRate(details) {
   return Number(cfg.fixedRate || 1320);
 }
 
-/** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc: + orderId (لا يتعارض مع قوائم أخرى). */
+/** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc:/or: + orderId (لا يتعارض مع قوائم أخرى). */
 function orderInlineKeyboard(businessOrderId, extraRows = []) {
   const oidFull = String(businessOrderId || '').trim();
   const enc = (actionLetter) => {
@@ -1559,6 +1559,7 @@ function orderInlineKeyboard(businessOrderId, extraRows = []) {
         { text: '⏸ تعليق', callback_data: enc('a') },
         { text: '❌ إلغاء الطلب', callback_data: enc('c') },
       ],
+      [{ text: '↩️ استرجاع', callback_data: enc('r') }],
       ...extraRows,
     ],
   };
@@ -1571,6 +1572,7 @@ function orderStatusLabelAr(status) {
     completed: 'تم الإكمال',
     archived: 'معلق',
     cancelled: 'ملغى',
+    refunded: 'استرجاع',
   };
   return map[s] || s;
 }
@@ -2945,9 +2947,9 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   // ── Order status (inline buttons on new orders) ─────
-  const orderCb = String(data).match(/^o([dac]):(.+)$/);
+  const orderCb = String(data).match(/^o([dacr]):(.+)$/);
   if (orderCb) {
-    const map = { d: 'completed', a: 'archived', c: 'cancelled' };
+    const map = { d: 'completed', a: 'archived', c: 'cancelled', r: 'refunded' };
     const status = map[orderCb[1]];
     const orderId = orderCb[2];
     if (status) {
@@ -2966,9 +2968,9 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   if (data.startsWith('ord:')) {
-    const m = String(data).match(/^ord:(done|arch|canc):(.+)$/);
+    const m = String(data).match(/^ord:(done|arch|canc|ref):(.+)$/);
     if (m) {
-      const map = { done: 'completed', arch: 'archived', canc: 'cancelled' };
+      const map = { done: 'completed', arch: 'archived', canc: 'cancelled', ref: 'refunded' };
       const status = map[m[1]];
       const orderId = m[2];
       const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, orderId, status);

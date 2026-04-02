@@ -37,6 +37,8 @@ function badgeClass(status) {
       return 'order-track-badge order-track-badge--cancelled';
     case 'archived':
       return 'order-track-badge order-track-badge--archived';
+    case 'refunded':
+      return 'order-track-badge order-track-badge--refunded';
     default:
       return 'order-track-badge order-track-badge--processing';
   }
@@ -121,7 +123,7 @@ export default function OrderTrackPage() {
     prevStatusRef.current = data.status;
 
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    if (!['completed', 'cancelled', 'archived'].includes(data.status)) return;
+    if (!['completed', 'cancelled', 'archived', 'refunded'].includes(data.status)) return;
 
     const tid = data.orderId;
     let title;
@@ -132,6 +134,9 @@ export default function OrderTrackPage() {
     } else if (data.status === 'cancelled') {
       title = t.trackNotifCancelledTitle;
       body = `${t.trackNotifCancelledBody} (${tid})`;
+    } else if (data.status === 'refunded') {
+      title = t.trackNotifRefundedTitle;
+      body = `${t.trackNotifRefundedBody} (${tid})`;
     } else {
       title = t.trackNotifArchivedTitle;
       body = `${t.trackNotifArchivedBody} (${tid})`;
@@ -171,7 +176,7 @@ export default function OrderTrackPage() {
         <Header t={t} lang={lang} toggleLang={toggleLang} />
       </div>
       <main className="buy-page-main order-track-page-executive">
-        <section className="container py-10">
+        <section className="container py-10 order-track-page-section">
           <div
             className="order-track-card glass-panel order-invoice-shell order-invoice-shell-executive"
             id="order-invoice"
@@ -212,6 +217,15 @@ export default function OrderTrackPage() {
                 )}
               </div>
             </div>
+
+            {data?.status === 'refunded' && (
+              <div className="order-track-refund-banner no-print" dir={isRtl ? 'rtl' : 'ltr'}>
+                <p className="order-track-refund-banner__text">{t.trackRefundBanner}</p>
+                <Link to="/#contact" className="btn btn-primary order-track-refund-banner__btn">
+                  {t.trackRefundContactCta}
+                </Link>
+              </div>
+            )}
 
             {orderId && typeof Notification !== 'undefined' && notifyPerm === 'default' && (
               <div className="order-track-notify no-print">

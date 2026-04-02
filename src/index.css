@@ -995,6 +995,40 @@ footer.glass-panel.site-footer {
   border-color: rgba(148, 163, 184, 0.45);
 }
 
+.order-track-badge--refunded {
+  background: rgba(168, 85, 247, 0.28);
+  color: #f5f3ff;
+  border-color: rgba(196, 181, 253, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.order-track-refund-banner {
+  margin: 0.85rem 0 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.22), rgba(15, 23, 42, 0.65));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+}
+
+.order-track-refund-banner__text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.order-track-refund-banner__btn {
+  align-self: stretch;
+  text-align: center;
+  min-height: 46px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
 .invoice-card-brand {
   display: flex;
   align-items: center;
@@ -1284,6 +1318,13 @@ footer.glass-panel.site-footer {
     background: #64748b !important;
     color: #fff !important;
     border: 1px solid #475569 !important;
+    text-shadow: none !important;
+  }
+
+  .order-track-badge--refunded {
+    background: #7c3aed !important;
+    color: #fff !important;
+    border: 1px solid #6d28d9 !important;
     text-shadow: none !important;
   }
 
@@ -2975,6 +3016,45 @@ h3 { font-size: 1.25rem; }
   color: #dbeafe;
 }
 
+.buy-page-section.buy-executive-shell {
+  max-width: min(900px, 100%);
+  margin-inline: auto;
+}
+
+.buy-panel-executive--main {
+  padding: 1.75rem;
+}
+
+.buy-success-card-inner {
+  padding: clamp(1.75rem, 5vw, 3rem) clamp(1.15rem, 4vw, 2rem);
+}
+
+.buy-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.buy-success-hint {
+  max-width: min(440px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.buy-page-executive .buy-header .buy-timer--header {
+  min-width: 140px;
+}
+
+.buy-form-grid > .buy-form-field {
+  min-width: 0;
+}
+
+.my-orders-page-shell {
+  max-width: min(760px, 100%);
+  margin-inline: auto;
+}
+
 /* Unified executive style: order tracking + invoice */
 .order-track-page-executive .order-invoice-shell-executive {
   border: 1px solid rgba(148, 163, 184, 0.24);
@@ -3116,20 +3196,118 @@ h3 { font-size: 1.25rem; }
   padding-inline: 1.2rem;
 }
 
-@media (max-width: 680px) {
+/* Buy / track / my-orders — small screens: full usable width, executive spacing */
+@media (max-width: 900px) {
+  .buy-page-section.buy-executive-shell {
+    max-width: none;
+    width: 100%;
+  }
+
+  .buy-page-executive .buy-panel-executive--main {
+    padding: clamp(1.1rem, 3.2vw, 1.45rem);
+  }
+
+  .buy-page-executive .buy-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .buy-page-executive .buy-header .buy-timer--header {
+    min-width: 0;
+    align-self: stretch;
+    text-align: center;
+  }
+
+  .buy-success-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buy-success-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .buy-success-hint {
+    max-width: none;
+  }
+
+  .order-track-page-section {
+    padding-top: clamp(1.25rem, 4vw, 2.5rem);
+    padding-bottom: clamp(1.5rem, 5vw, 2.5rem);
+  }
+
+  .order-track-page-executive .order-track-card {
+    max-width: none;
+    width: 100%;
+    padding: clamp(1.1rem, 3.2vw, 1.35rem);
+  }
+
+  .order-track-page-executive .order-track-title {
+    font-size: clamp(1.2rem, 4.2vw, 1.45rem);
+  }
+
+  .order-track-page-executive .order-track-subtitle {
+    max-width: none;
+  }
+
+  .order-track-page-executive .order-track-export-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    text-align: center;
+  }
+
+  .order-track-page-executive .order-track-export-hint {
+    max-width: none !important;
+    margin-inline: 0 !important;
+  }
+
+  .order-track-page-executive .order-track-export-btn {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
+
+  .order-track-page-executive .order-track-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .order-track-page-executive .order-track-actions .btn {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .my-orders-page-shell {
+    max-width: none !important;
+  }
+
   .my-orders-page-executive .my-orders-list__row {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.9rem;
+    padding-block: 1.15rem;
   }
 
   .my-orders-page-executive .my-orders-track-btn {
-    min-width: 92px;
-    min-height: 36px;
-    font-size: 0.82rem !important;
-    padding: 0.35rem 0.75rem !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    justify-content: center;
+    font-size: 0.9rem !important;
+    padding: 0.55rem 1rem !important;
   }
 
   .my-orders-page-executive .my-orders-home-action {
-    justify-content: center;
+    justify-content: stretch;
+  }
+
+  .my-orders-page-executive .my-orders-home-action .btn {
+    width: 100%;
   }
 }
 
@@ -3533,7 +3711,7 @@ h3 { font-size: 1.25rem; }
   cursor: pointer;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 900px) {
   .buy-header {
     flex-direction: column;
     align-items: flex-start;

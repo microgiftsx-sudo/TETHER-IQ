@@ -307,12 +307,14 @@ export function publicOrderTrackingPayload(o) {
     completed: 'تم الإكمال',
     archived: 'معلق',
     cancelled: 'ملغى',
+    refunded: 'استرجاع',
   };
   const en = {
     received: 'Processing',
     completed: 'Completed',
     archived: 'On hold',
     cancelled: 'Cancelled',
+    refunded: 'Refunded',
   };
   return {
     orderId: o.orderId,

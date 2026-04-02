@@ -423,8 +423,8 @@ export default function BuyPage() {
       <div className="page-shell">
         <Header t={t} lang={lang} toggleLang={toggleLang} />
         <main className="buy-page-main buy-page-executive">
-          <section className="container py-10" style={{ maxWidth: 900 }}>
-            <div className="glass-panel w-full text-center buy-success-card-executive" style={{ padding: '3rem 2rem', border: '2px solid var(--accent-primary)' }}>
+          <section className="container py-10 buy-executive-shell buy-page-section">
+            <div className="glass-panel w-full text-center buy-success-card-executive buy-success-card-inner">
               <div style={{ fontSize: '4rem', marginBottom: '1rem', lineHeight: 1 }}>
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent-primary)' }}>
                   <path d="M20 7L9 18l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -446,16 +446,16 @@ export default function BuyPage() {
                 </p>
               )}
               {!!orderId && (
-                <p className="text-muted text-sm mt-3" style={{ maxWidth: 420, margin: '0 auto' }}>
+                <p className="text-muted text-sm mt-3 buy-success-hint">
                   {t.trackOrderHint}
                 </p>
               )}
               {!!orderId && (
-                <p className="text-muted text-sm mt-2" style={{ maxWidth: 440, margin: '0 auto' }}>
+                <p className="text-muted text-sm mt-2 buy-success-hint">
                   {t.successInvoiceHow}
                 </p>
               )}
-              <div className="mt-6" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
+              <div className="mt-6 buy-success-actions">
                 {!!orderId && (
                   <Link to={`/track?order=${encodeURIComponent(orderId)}`} className="btn btn-primary">
                     {t.trackOrderOpen}
@@ -476,8 +476,8 @@ export default function BuyPage() {
     <div className="page-shell">
       <Header t={t} lang={lang} toggleLang={toggleLang} />
       <main className="buy-page-main buy-page-executive">
-      <section className="container py-10 buy-executive-shell" style={{ maxWidth: 900 }}>
-      <div className="glass-panel buy-panel buy-panel-executive" style={{ padding: '1.75rem', border: '1px solid var(--accent-primary)' }}>
+      <section className="container py-10 buy-executive-shell buy-page-section">
+      <div className="glass-panel buy-panel buy-panel-executive buy-panel-executive--main">
             <div className="buy-header mb-6" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
           <div className="buy-title-wrap">
             <h2 className="text-accent mb-1">{isRtl ? 'تفاصيل الدفع' : 'Payment Details'}</h2>
@@ -518,7 +518,7 @@ export default function BuyPage() {
               </div>
             </div>
           </div>
-          <div className="text-center buy-timer" style={{ minWidth: 140 }}>
+          <div className="text-center buy-timer buy-timer--header">
             <div className="text-muted text-sm">{isRtl ? 'الوقت المتبقي' : 'Time left'}</div>
             <div className="text-accent" style={{ fontWeight: 900, fontSize: '1.6rem' }}>
               {cd.mm}:{cd.ss}
@@ -537,7 +537,7 @@ export default function BuyPage() {
             )}
 
             <div className="buy-form-grid mb-2" style={{ direction: isRtl ? 'rtl' : 'ltr' }}>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
+              <div className="input-group buy-form-field">
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.selectPayment}</label>
                 <select
                   className="input-control"
@@ -553,7 +553,7 @@ export default function BuyPage() {
                   ))}
                 </select>
               </div>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
+              <div className="input-group buy-form-field">
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                   {isRtl ? 'عنوان محفظة USDT' : 'USDT Wallet Address'}
                 </label>
@@ -573,7 +573,7 @@ export default function BuyPage() {
                   </div>
                 )}
               </div>
-              <div className="input-group" style={{ flex: 1, minWidth: '240px' }}>
+              <div className="input-group buy-form-field">
                 <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                   {isRtl ? 'شبكة التحويل' : 'Network'}
                 </label>
