@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
 export default function Header({ t, lang, toggleLang, links }) {
@@ -26,6 +27,15 @@ export default function Header({ t, lang, toggleLang, links }) {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
 
   useEffect(() => {
     if (mobileOpen) return undefined;
@@ -73,9 +83,47 @@ export default function Header({ t, lang, toggleLang, links }) {
 
   const effectiveAnnouncementHidden = mobileOpen;
   const safeAnnouncementHeight = Math.max(40, announcementHeight || 56);
-  const announcementOffsetPx = effectiveAnnouncementHidden ? safeAnnouncementHeight : (announcementProgress * safeAnnouncementHeight);
+  // When mobile menu is open, do NOT translate .header-bar: transform creates a containing block
+  // and breaks position:fixed for .header-mobile-sheet (collapses to ~25px height).
+  const announcementOffsetPx = mobileOpen ? 0 : announcementProgress * safeAnnouncementHeight;
+
+  const mobileMenuPortal =
+    mobileOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <>
+            <div
+              className="header-mobile-backdrop"
+              onClick={() => setMobileOpen(false)}
+              aria-hidden
+            />
+            <div
+              className="header-mobile-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label={isRtl ? 'القائمة' : 'Menu'}
+            >
+              <div className="header-mobile-pills">
+                <ExchangePills links={links} />
+              </div>
+              {navLinks.map((link) => (
+                <button
+                  key={link.label}
+                  type="button"
+                  className="header-nav-link header-nav-link--stack"
+                  style={{ textAlign: isRtl ? 'right' : 'left' }}
+                  onClick={() => scrollTo(link.href)}
+                >
+                  {link.label}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body,
+        )
+      : null;
 
   return (
+    <>
     <header className="header-sticky">
       <div
         className={`header-announcement${effectiveAnnouncementHidden ? ' header-announcement--hidden' : ''}`}
@@ -96,7 +144,10 @@ export default function Header({ t, lang, toggleLang, links }) {
         {t.announcement}
       </div>
 
-      <nav className="header-bar" style={{ transform: `translateY(-${announcementOffsetPx}px)` }}>
+      <nav
+        className="header-bar"
+        style={announcementOffsetPx ? { transform: `translateY(-${announcementOffsetPx}px)` } : undefined}
+      >
         <div className="header-inner">
           <Logo navigate={navigate} />
 
@@ -139,27 +190,10 @@ export default function Header({ t, lang, toggleLang, links }) {
             </button>
           </div>
         </div>
-
-        {mobileOpen && (
-          <div className="header-mobile-sheet">
-            <div className="header-mobile-pills">
-              <ExchangePills links={links} />
-            </div>
-            {navLinks.map((link) => (
-              <button
-                key={link.label}
-                type="button"
-                className="header-nav-link header-nav-link--stack"
-                style={{ textAlign: isRtl ? 'right' : 'left' }}
-                onClick={() => scrollTo(link.href)}
-              >
-                {link.label}
-              </button>
-            ))}
-          </div>
-        )}
       </nav>
     </header>
+    {mobileMenuPortal}
+    </>
   );
 }
 
