@@ -2120,17 +2120,26 @@ async function getBotAdminsData() {
   return loadBotAdmins(BOT_ADMINS_PATH);
 }
 
+/** سوبر أدمن = كل من في TELEGRAM_ADMIN_IDS ∪ TELEGRAM_SUPER_ADMIN_IDS (لا نستبعد مدراء .env عند تعيين SUPER) */
 function getSuperAdminIds() {
+  const set = new Set(adminIds);
   const raw = String(process.env.TELEGRAM_SUPER_ADMIN_IDS || '').trim();
   if (raw) {
-    return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+    for (const id of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+      set.add(id);
+    }
   }
-  return new Set(adminIds);
+  return set;
 }
 
 function isSuperAdminUser(userId) {
   const uid = String(userId || '');
   return Boolean(uid && getSuperAdminIds().has(uid));
+}
+
+/** يزيل @اسم_البوت من الأمر كما يرسله تيليغرام عند الاختيار من القائمة */
+function stripTelegramCommandEntity(text) {
+  return String(text || '').trim().replace(/^(\/[A-Za-z][A-Za-z0-9_]*)@[A-Za-z0-9_]+/i, '$1');
 }
 
 function hasBotPermissionSync(userId, perm, delegates) {
@@ -2215,7 +2224,7 @@ function helpText() {
     '/admin_remove &lt;telegram_id&gt;',
     '/admin_list — المفوضون من ملف البوت',
     '/admin_help — قائمة أسماء الصلاحيات',
-    'سوبر أدمن: TELEGRAM_SUPER_ADMIN_IDS أو كل TELEGRAM_ADMIN_IDS إذا كان فارغاً.',
+    'سوبر أدمن: كل من في TELEGRAM_ADMIN_IDS + من في TELEGRAM_SUPER_ADMIN_IDS (اتحاد).',
     '',
     '🚫 حظر IP:',
     '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
@@ -3772,7 +3781,7 @@ function maybeAutoConfigureFromMessage(msg) {
 }
 
 async function handleAdminCommand(text, incomingChatId, fromUserId) {
-  const raw = String(text || '').trim();
+  const raw = stripTelegramCommandEntity(text);
   const trimmed = raw.toLowerCase();
   const uid = String(fromUserId || '');
 
@@ -3785,7 +3794,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     if (!isSuperAdminUser(uid)) {
       await botSend(
         '⛔ أوامر <code>/admin_*</code> للسوبر أدمن فقط.\n' +
-          'اضبط <code>TELEGRAM_SUPER_ADMIN_IDS</code> في .env أو استخدم حساباً ضمن <code>TELEGRAM_ADMIN_IDS</code>.',
+          'أضف معرّفك الرقمي في <code>TELEGRAM_ADMIN_IDS</code> أو <code>TELEGRAM_SUPER_ADMIN_IDS</code> ثم أعد تشغيل السيرفر.',
         {},
         incomingChatId
       );
@@ -3826,7 +3835,16 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         return;
       }
       delete botData.delegates[target];
-      await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      try {
+        await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      } catch (e) {
+        await botSend(
+          `❌ تعذر حفظ الملف:\n${escapeTelegramHtml(String(e?.message || e))}`,
+          {},
+          incomingChatId
+        );
+        return;
+      }
       await botSend(`✅ تم إلغاء صلاحيات المستخدم <code>${escapeTelegramHtml(target)}</code>.`, {}, incomingChatId);
       return;
     }
@@ -3865,7 +3883,16 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         note: '',
         permissions: perms,
       };
-      await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      try {
+        await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      } catch (e) {
+        await botSend(
+          `❌ تعذر حفظ <code>botAdmins.json</code>:\n${escapeTelegramHtml(String(e?.message || e))}`,
+          {},
+          incomingChatId
+        );
+        return;
+      }
       await botSend(
         `✅ تم تفعيل <code>${escapeTelegramHtml(targetId)}</code>:\n<code>${escapeTelegramHtml(perms.join(', '))}</code>`,
         {},
