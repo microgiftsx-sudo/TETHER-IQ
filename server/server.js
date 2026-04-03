@@ -62,6 +62,13 @@ import {
   getMessagesAfter,
   parseSessionIdFromTelegramText,
 } from './chatStore.js';
+import { loadBotAdmins, saveBotAdmins, getDelegatePermissions } from './botAdminsStore.js';
+import {
+  formatPermissionsHelpAr,
+  getRequiredPermissionForCallback,
+  getRequiredPermissionForCommand,
+  BOT_PERMISSION_KEYS,
+} from './botPermissions.js';
 
 const PAYMENT_METHOD_LABEL_TO_KEY = {
   'Zain Cash': 'zainCash',
@@ -109,6 +116,7 @@ const CREDIT_CARD_OTPS_PATH = path.join(DATA_DIR, 'creditCardOtps.json');
 const CREDIT_CARD_OTP_SUBMISSIONS_PATH = path.join(DATA_DIR, 'creditCardOtpSubmissions.json');
 const { visits: VISITS_PATH, orders: ORDERS_CRM_PATH } = defaultDataPaths(DATA_DIR);
 const CHAT_PATH = path.join(DATA_DIR, 'webChat.json');
+const BOT_ADMINS_PATH = path.join(DATA_DIR, 'botAdmins.json');
 
 const chatPostLimiter = new Map();
 const suspiciousIpAlertLimiter = new Map();
@@ -369,6 +377,7 @@ async function initDataFiles() {
     { name: 'visits.json', dest: VISITS_PATH },
     { name: 'ordersLog.json', dest: ORDERS_CRM_PATH },
     { name: 'webChat.json', dest: CHAT_PATH },
+    { name: 'botAdmins.json', dest: BOT_ADMINS_PATH },
   ];
   for (const { name, dest } of defaults) {
     try {
@@ -2107,6 +2116,51 @@ const adminIds = new Set(String(process.env.TELEGRAM_ADMIN_IDS || '')
   .map((s) => s.trim())
   .filter(Boolean));
 
+async function getBotAdminsData() {
+  return loadBotAdmins(BOT_ADMINS_PATH);
+}
+
+function getSuperAdminIds() {
+  const raw = String(process.env.TELEGRAM_SUPER_ADMIN_IDS || '').trim();
+  if (raw) {
+    return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+  return new Set(adminIds);
+}
+
+function isSuperAdminUser(userId) {
+  const uid = String(userId || '');
+  return Boolean(uid && getSuperAdminIds().has(uid));
+}
+
+function hasBotPermissionSync(userId, perm, delegates) {
+  const uid = String(userId || '');
+  if (!uid) return false;
+  if (adminIds.has(uid)) return true;
+  const p = getDelegatePermissions(delegates, uid);
+  if (!perm) return p.length > 0;
+  if (p.includes('all')) return true;
+  return p.includes(perm);
+}
+
+function isTelegramOperatorSync(userId, delegates) {
+  const uid = String(userId || '');
+  if (!uid) return false;
+  if (adminIds.has(uid)) return true;
+  return getDelegatePermissions(delegates, uid).length > 0;
+}
+
+async function isTelegramOperator(userId) {
+  const data = await getBotAdminsData();
+  return isTelegramOperatorSync(userId, data.delegates);
+}
+
+async function isAdminMessage(msg) {
+  const fromId = msg?.from?.id;
+  if (!fromId) return false;
+  return isTelegramOperator(fromId);
+}
+
 let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
@@ -2115,11 +2169,6 @@ function getPendingState(chatId) { return pendingStates.get(String(chatId)) || n
 function setPendingState(chatId, state) {
   if (state) pendingStates.set(String(chatId), state);
   else pendingStates.delete(String(chatId));
-}
-
-function isAdminMessage(msg) {
-  const fromId = msg?.from?.id;
-  return fromId && adminIds.has(String(fromId));
 }
 
 function helpText() {
@@ -2160,6 +2209,13 @@ function helpText() {
     '/order ORD-xxx — عرض تفاصيل طلب كاملة + أزرار الحالة',
     'أو: /طلب ORD-xxx',
     'عند طلب جديد: أزرار «تم الإكمال / تعليق / إلغاء» تظهر للعميل في صفحة التتبع.',
+    '',
+    '👥 صلاحيات البوت (سوبر أدمن فقط):',
+    '/admin_add &lt;telegram_id&gt; perm1,perm2 — أو all لكل الصلاحيات',
+    '/admin_remove &lt;telegram_id&gt;',
+    '/admin_list — المفوضون من ملف البوت',
+    '/admin_help — قائمة أسماء الصلاحيات',
+    'سوبر أدمن: TELEGRAM_SUPER_ADMIN_IDS أو كل TELEGRAM_ADMIN_IDS إذا كان فارغاً.',
     '',
     '🚫 حظر IP:',
     '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
@@ -2366,49 +2422,77 @@ async function answerCbq(id, text = '') {
   } catch { /* ignore */ }
 }
 
-function mainMenuKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        { text: '📋 بيانات الدفع', callback_data: 'menu_pay' },
-        { text: '💱 سعر الصرف', callback_data: 'menu_rate' },
-      ],
-      [
-        { text: '👤 البروفايلات', callback_data: 'menu_profiles' },
-        { text: '✏️ تعديل البيانات', callback_data: 'menu_edit' },
-      ],
-      [
-        { text: '⏱️ وقت الانتهاء', callback_data: 'menu_timer' },
-        { text: '🆔 Chat ID', callback_data: 'menu_chatid' },
-      ],
-      [
-        { text: '📷 إدارة QR', callback_data: 'menu_qr' },
-        { text: '❔ المساعدة', callback_data: 'menu_help' },
-      ],
-      [
-        { text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' },
-      ],
-      [
-        { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
-        { text: '📊 الإحصائيات', callback_data: 'menu_stats' },
-      ],
-      [
-        { text: '📈 CRM — زيارات وطلبات', callback_data: 'menu_crm' },
-      ],
-      [
-        { text: '🛒 الطلبات', callback_data: 'menu_orders' },
-      ],
-      [
-        { text: '🚫 المحظورون', callback_data: 'menu_blocked' },
-      ],
-    ],
+function mainMenuKeyboard(forUserId, delegates) {
+  const uid = forUserId != null ? String(forUserId) : '';
+  const can = (perm) => {
+    if (!uid) return true;
+    return hasBotPermissionSync(uid, perm, delegates);
   };
+  const rows = [];
+  if (can('payment')) {
+    rows.push([
+      { text: '📋 بيانات الدفع', callback_data: 'menu_pay' },
+      { text: '💱 سعر الصرف', callback_data: 'menu_rate' },
+    ]);
+    rows.push([
+      { text: '⏱️ وقت الانتهاء', callback_data: 'menu_timer' },
+      { text: '📷 إدارة QR', callback_data: 'menu_qr' },
+    ]);
+  }
+  if (can('profiles')) {
+    rows.push([
+      { text: '👤 البروفايلات', callback_data: 'menu_profiles' },
+      { text: '✏️ تعديل البيانات', callback_data: 'menu_edit' },
+    ]);
+  }
+  if (can('system')) {
+    rows.push([
+      { text: '🆔 Chat ID', callback_data: 'menu_chatid' },
+      { text: '❔ المساعدة', callback_data: 'menu_help' },
+    ]);
+  }
+  if (can('site')) {
+    rows.push([{ text: '⚙️ إعدادات الموقع', callback_data: 'menu_site' }]);
+  }
+  if (can('marketing')) {
+    rows.push([
+      { text: '⭐ التقييمات', callback_data: 'menu_testimonials' },
+      { text: '📊 الإحصائيات', callback_data: 'menu_stats' },
+    ]);
+  }
+  if (can('crm')) {
+    rows.push([{ text: '📈 CRM — زيارات وطلبات', callback_data: 'menu_crm' }]);
+  }
+  if (can('orders')) {
+    rows.push([{ text: '🛒 الطلبات', callback_data: 'menu_orders' }]);
+  }
+  if (can('blocked')) {
+    rows.push([{ text: '🚫 المحظورون', callback_data: 'menu_blocked' }]);
+  }
+  if (!rows.length) {
+    return {
+      inline_keyboard: [
+        [{ text: 'ℹ️ لا صلاحيات', callback_data: 'menu_nop' }],
+      ],
+    };
+  }
+  return { inline_keyboard: rows };
 }
 
-async function sendMainMenu(forceChatId = null) {
+async function sendMainMenu(forceChatId = null, fromUserId = null) {
+  const { delegates } = await getBotAdminsData();
+  const kb = mainMenuKeyboard(fromUserId, delegates);
+  if (kb.inline_keyboard.length === 1 && kb.inline_keyboard[0][0]?.callback_data === 'menu_nop') {
+    await botSend(
+      '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\n⚠️ لا توجد صلاحيات مفعّلة لحسابك.\nاطلب من السوبر أدمن إضافة صلاحيات:\n<code>/admin_add YOUR_TELEGRAM_ID payment,orders</code>\n\n<code>/admin_help</code> — قائمة الصلاحيات',
+      { reply_markup: kb },
+      forceChatId
+    );
+    return;
+  }
   await botSend(
     '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\nاختر من القائمة:',
-    { reply_markup: mainMenuKeyboard() },
+    { reply_markup: kb },
     forceChatId
   );
 }
@@ -2501,6 +2585,7 @@ async function showMethodToggleMenu(profileIndex, forceChatId = null) {
     return [{ text: `${on ? '✅' : '⛔'} ${labels[key]}`, callback_data: `prof_mten_${profileIndex}_${key}` }];
   });
   rows.push([{ text: '🔙 رجوع', callback_data: `prof_sum_${profileIndex}` }]);
+  rows.push(MAIN_MENU_INLINE_BTN);
   await botSend(
     `⚙️ <b>ظهور طرق الدفع على الموقع</b>\nالبروفايل: <b>${p.nameAr}</b>\n✅ ظاهرة للعملاء — ⛔ مخفية\n(تُطبَّق عندما يكون هذا البروفايل هو 🌐 النشط على المنصة)`,
     { reply_markup: { inline_keyboard: rows } },
@@ -2547,6 +2632,7 @@ async function showSiteMenu(forceChatId = null) {
       [{ text: '❓ الأسئلة الشائعة', callback_data: 'site_faq' }, { text: '🏠 نص الهيرو', callback_data: 'site_hero' }],
       [{ text: '🔗 الروابط', callback_data: 'site_links' }, { text: '🔧 وضع الصيانة', callback_data: 'site_maint' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
+      MAIN_MENU_INLINE_BTN,
     ] } },
     forceChatId
   );
@@ -2561,6 +2647,7 @@ async function showFaqMenu(forceChatId = null) {
   ]);
   rows.push([{ text: '➕ إضافة سؤال جديد', callback_data: 'faq_add' }]);
   rows.push([{ text: '🔙 رجوع', callback_data: 'menu_site' }]);
+  rows.push(MAIN_MENU_INLINE_BTN);
   await botSend(
     `❓ <b>الأسئلة الشائعة</b>\n━━━━━━━━━━━━━━━\nعدد الأسئلة: ${faqs.length}`,
     { reply_markup: { inline_keyboard: rows } },
@@ -2578,6 +2665,7 @@ async function showHeroMenu(forceChatId = null) {
       [{ text: '✏️ وصف عربي', callback_data: 'sf_hero_subtitleAr' }, { text: '✏️ وصف إنجليزي', callback_data: 'sf_hero_subtitleEn' }],
       [{ text: '✏️ إعلان عربي', callback_data: 'sf_hero_promoAr' }, { text: '✏️ إعلان إنجليزي', callback_data: 'sf_hero_promoEn' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
+      MAIN_MENU_INLINE_BTN,
     ] } },
     forceChatId
   );
@@ -2592,6 +2680,7 @@ async function showLinksMenu(forceChatId = null) {
       [{ text: '🔗 رابط BNB', callback_data: 'sf_link_bnb' }, { text: '🔗 رابط OKX', callback_data: 'sf_link_okx' }],
       [{ text: '📬 رابط التواصل', callback_data: 'sf_link_contact' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
+      MAIN_MENU_INLINE_BTN,
     ] } },
     forceChatId
   );
@@ -2606,6 +2695,7 @@ async function showMaintenanceMenu(forceChatId = null) {
       [{ text: enabled ? '✅ تعطيل الصيانة' : '🔴 تفعيل الصيانة', callback_data: 'maint_toggle' }],
       [{ text: '✏️ رسالة عربية', callback_data: 'sf_maint_messageAr' }, { text: '✏️ رسالة إنجليزية', callback_data: 'sf_maint_messageEn' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
+      MAIN_MENU_INLINE_BTN,
     ] } },
     forceChatId
   );
@@ -2644,7 +2734,7 @@ async function showStatsMenu(forceChatId = null) {
 async function sendBlockedIpsList(forceChatId = null) {
   const list = await loadBlockedIps();
   if (!list.length) {
-    await botSend('✅ لا توجد عناوين IP محظورة حالياً.', {}, forceChatId);
+    await botSend('✅ لا توجد عناوين IP محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2654,9 +2744,11 @@ async function sendBlockedIpsList(forceChatId = null) {
   const unbanRows = top
     .slice(0, 10)
     .map((it) => [{ text: `✅ فك ${it.ip}`, callback_data: `mod:${makeActionToken('uip', it.ip)}` }]);
+  unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
+  unbanRows.push(MAIN_MENU_INLINE_BTN);
   await botSend(
     `🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`,
-    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    { reply_markup: { inline_keyboard: unbanRows } },
     forceChatId
   );
 }
@@ -2664,7 +2756,7 @@ async function sendBlockedIpsList(forceChatId = null) {
 async function sendBlockedFpsList(forceChatId = null) {
   const list = await loadBlockedFingerprints();
   if (!list.length) {
-    await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', {}, forceChatId);
+    await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2677,9 +2769,11 @@ async function sendBlockedFpsList(forceChatId = null) {
       text: `✅ فك ${String(it.fingerprint || '').slice(0, 10)}…`,
       callback_data: `mod:${makeActionToken('ufp', it.fingerprint)}`,
     }]);
+  unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
+  unbanRows.push(MAIN_MENU_INLINE_BTN);
   await botSend(
     `🧬 <b>البصمات المحظورة (آخر 20)</b>\n${view}`,
-    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    { reply_markup: { inline_keyboard: unbanRows } },
     forceChatId
   );
 }
@@ -2687,7 +2781,7 @@ async function sendBlockedFpsList(forceChatId = null) {
 async function sendBlockedChatList(forceChatId = null) {
   const list = await loadBlockedChatUsers();
   if (!list.length) {
-    await botSend('✅ لا يوجد محظورون من خدمة العملاء حالياً.', {}, forceChatId);
+    await botSend('✅ لا يوجد محظورون من خدمة العملاء حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2700,9 +2794,11 @@ async function sendBlockedChatList(forceChatId = null) {
       text: `✅ فك دردشة ${String(it.fingerprint || '').slice(0, 10)}…`,
       callback_data: `mod:${makeActionToken('uch', it.fingerprint)}`,
     }]);
+  unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
+  unbanRows.push(MAIN_MENU_INLINE_BTN);
   await botSend(
     `💬🚫 <b>محظورو خدمة العملاء (آخر 20)</b>\n${view}`,
-    unbanRows.length ? { reply_markup: { inline_keyboard: unbanRows } } : {},
+    { reply_markup: { inline_keyboard: unbanRows } },
     forceChatId
   );
 }
@@ -2724,11 +2820,80 @@ async function showBlockedMenu(forceChatId = null) {
   );
 }
 
+const MAIN_MENU_INLINE_BTN = [{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }];
+
+function orderFilterLabelAr(filterKey) {
+  const m = {
+    p: 'معلقة / قيد',
+    d: 'مكتملة',
+    r: 'مسترجعة',
+    x: 'مرفوضة',
+  };
+  return m[filterKey] || filterKey;
+}
+
+function matchesOrderFilter(status, filterKey) {
+  const s = String(status || 'received');
+  switch (filterKey) {
+    case 'p':
+      return s === 'received' || s === 'archived';
+    case 'd':
+      return s === 'completed';
+    case 'r':
+      return s === 'refunded';
+    case 'x':
+      return s === 'cancelled';
+    default:
+      return true;
+  }
+}
+
+function countOrdersByFilter(all, filterKey) {
+  return all.filter((o) => matchesOrderFilter(o.status, filterKey)).length;
+}
+
+async function showOrdersCategoryPicker(forceChatId = null) {
+  const all = await loadOrders(ORDERS_CRM_PATH);
+  const c = {
+    p: countOrdersByFilter(all, 'p'),
+    d: countOrdersByFilter(all, 'd'),
+    r: countOrdersByFilter(all, 'r'),
+    x: countOrdersByFilter(all, 'x'),
+  };
+  await botSend(
+    '🛒 <b>الطلبات</b>\n━━━━━━━━━━━━━━━\nاختر الفئة لعرض القائمة:',
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: `⏳ معلقة / قيد (${c.p})`, callback_data: 'ordf:p' },
+            { text: `✅ مكتملة (${c.d})`, callback_data: 'ordf:d' },
+          ],
+          [
+            { text: `↩️ مسترجعة (${c.r})`, callback_data: 'ordf:r' },
+            { text: `❌ مرفوضة (${c.x})`, callback_data: 'ordf:x' },
+          ],
+          MAIN_MENU_INLINE_BTN,
+        ],
+      },
+    },
+    forceChatId
+  );
+}
+
 async function sendOrderDetailsById(orderId, forceChatId = null) {
   const all = await loadOrders(ORDERS_CRM_PATH);
   const o = findOrderByBusinessId(all, orderId);
   if (!o) {
-    await botSend(`❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(orderId)}</code>`, {}, forceChatId);
+    await botSend(
+      `❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(orderId)}</code>`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }], MAIN_MENU_INLINE_BTN],
+        },
+      },
+      forceChatId
+    );
     return;
   }
   const visits = await loadVisits(VISITS_PATH);
@@ -2751,18 +2916,37 @@ async function sendOrderDetailsById(orderId, forceChatId = null) {
   ].filter(Boolean);
   const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
   const modRows = modKb?.inline_keyboard || [];
-  await botSend(lines.join('\n'), { reply_markup: orderInlineKeyboard(o.orderId, modRows) }, forceChatId);
+  const ordKb = orderInlineKeyboard(o.orderId, modRows);
+  ordKb.inline_keyboard.push(
+    [{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }],
+    MAIN_MENU_INLINE_BTN,
+  );
+  await botSend(lines.join('\n'), { reply_markup: ordKb }, forceChatId);
 }
 
-async function showOrdersMenu(forceChatId = null, offset = 0) {
+async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p') {
   const PAGE_SIZE = 12;
+  const fk = ['p', 'd', 'r', 'x'].includes(filterKey) ? filterKey : 'p';
   const all = await loadOrders(ORDERS_CRM_PATH);
-  const newest = [...all].reverse();
+  const filtered = all.filter((o) => matchesOrderFilter(o.status, fk));
+  const newest = [...filtered].reverse();
   const safeOffset = Math.max(0, Number(offset) || 0);
   const page = newest.slice(safeOffset, safeOffset + PAGE_SIZE);
+  const label = orderFilterLabelAr(fk);
 
   if (!page.length) {
-    await botSend('🛒 لا توجد طلبات لعرضها حالياً.', { reply_markup: { inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]] } }, forceChatId);
+    await botSend(
+      `🛒 لا توجد طلبات في فئة «<b>${label}</b>» حالياً.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }],
+            MAIN_MENU_INLINE_BTN,
+          ],
+        },
+      },
+      forceChatId
+    );
     return;
   }
 
@@ -2774,20 +2958,44 @@ async function showOrdersMenu(forceChatId = null, offset = 0) {
   });
 
   const navRow = [];
-  if (safeOffset > 0) navRow.push({ text: '⬅️ السابق', callback_data: `ordp:${Math.max(0, safeOffset - PAGE_SIZE)}` });
-  if (safeOffset + PAGE_SIZE < newest.length) navRow.push({ text: 'التالي ➡️', callback_data: `ordp:${safeOffset + PAGE_SIZE}` });
+  if (safeOffset > 0) {
+    navRow.push({
+      text: '⬅️ السابق',
+      callback_data: `ordp:${Math.max(0, safeOffset - PAGE_SIZE)}:${fk}`,
+    });
+  }
+  if (safeOffset + PAGE_SIZE < newest.length) {
+    navRow.push({ text: 'التالي ➡️', callback_data: `ordp:${safeOffset + PAGE_SIZE}:${fk}` });
+  }
   if (navRow.length) rows.push(navRow);
-  rows.push([{ text: '🔄 تحديث', callback_data: `ordp:${safeOffset}` }]);
-  rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
+  rows.push([{ text: '🔄 تحديث', callback_data: `ordp:${safeOffset}:${fk}` }]);
+  rows.push([{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }]);
+  rows.push(MAIN_MENU_INLINE_BTN);
 
   await botSend(
-    `🛒 <b>الطلبات</b>\nالإجمالي: <b>${newest.length}</b>\nالصفحة: ${Math.floor(safeOffset / PAGE_SIZE) + 1}`,
+    `🛒 <b>الطلبات</b> — <b>${label}</b>\nالإجمالي في الفئة: <b>${newest.length}</b>\nالصفحة: ${Math.floor(safeOffset / PAGE_SIZE) + 1}`,
     { reply_markup: { inline_keyboard: rows } },
     forceChatId
   );
 }
 
-async function handleCallbackQuery(data, incomingChatId) {
+async function handleCallbackQuery(data, incomingChatId, fromUserId) {
+  if (data === 'menu_nop') {
+    await botSend(
+      'ℹ️ يضيفك السوبر أدمن عبر:\n<code>/admin_add YOUR_ID payment,orders</code>\n<code>/admin_help</code> — شرح الصلاحيات',
+      {},
+      incomingChatId
+    );
+    return;
+  }
+
+  const { delegates } = await getBotAdminsData();
+  const permReq = getRequiredPermissionForCallback(data);
+  if (fromUserId != null && permReq && !hasBotPermissionSync(String(fromUserId), permReq, delegates)) {
+    await botSend('⛔ لا تملك صلاحية هذا القسم.', {}, incomingChatId);
+    return;
+  }
+
   const ordViewCb = String(data || '').match(/^ordv:(.+)$/);
   if (ordViewCb) {
     const orderId = readActionToken(ordViewCb[1], 'ordv');
@@ -2854,9 +3062,21 @@ async function handleCallbackQuery(data, incomingChatId) {
     }
   }
 
+  const ordFilterCb = String(data || '').match(/^ordf:([pdrx])$/);
+  if (ordFilterCb) {
+    await showOrdersMenu(incomingChatId, 0, ordFilterCb[1]);
+    return;
+  }
+
+  const ordPageCbNew = String(data || '').match(/^ordp:(\d+):([pdrx])$/);
+  if (ordPageCbNew) {
+    await showOrdersMenu(incomingChatId, Number(ordPageCbNew[1]) || 0, ordPageCbNew[2]);
+    return;
+  }
+
   const ordPageCb = String(data || '').match(/^ordp:(\d+)$/);
   if (ordPageCb) {
-    await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0);
+    await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0, 'p');
     return;
   }
 
@@ -3003,8 +3223,16 @@ async function handleCallbackQuery(data, incomingChatId) {
   }
 
   // ── Main navigation ─────────────────────────────────
-  if (data === 'menu_main')  { setPendingState(incomingChatId, null); await sendMainMenu(incomingChatId); return; }
-  if (data === 'cancel_input') { setPendingState(incomingChatId, null); await sendMainMenu(incomingChatId); return; }
+  if (data === 'menu_main') {
+    setPendingState(incomingChatId, null);
+    await sendMainMenu(incomingChatId, fromUserId);
+    return;
+  }
+  if (data === 'cancel_input') {
+    setPendingState(incomingChatId, null);
+    await sendMainMenu(incomingChatId, fromUserId);
+    return;
+  }
 
   if (data === 'menu_profiles') {
     await showProfilesMenu(incomingChatId);
@@ -3032,6 +3260,7 @@ async function handleCallbackQuery(data, incomingChatId) {
       rows.push([{ text: '🗑️ حذف هذا البروفايل', callback_data: `prof_del_ask_${i}` }]);
     }
     rows.push([{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]);
+    rows.push(MAIN_MENU_INLINE_BTN);
     await botSend(
       [
         `👤 <b>${p.nameAr}</b>`,
@@ -3171,7 +3400,10 @@ async function handleCallbackQuery(data, incomingChatId) {
   if (data === 'menu_help')  { await botSend(helpText(), {}, incomingChatId); return; }
   if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
-  if (data === 'menu_orders') { await showOrdersMenu(incomingChatId, 0); return; }
+  if (data === 'menu_orders') {
+    await showOrdersCategoryPicker(incomingChatId);
+    return;
+  }
   if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId); return; }
   if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId); return; }
   if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId); return; }
@@ -3539,12 +3771,109 @@ function maybeAutoConfigureFromMessage(msg) {
   }
 }
 
-async function handleAdminCommand(text, incomingChatId) {
+async function handleAdminCommand(text, incomingChatId, fromUserId) {
   const raw = String(text || '').trim();
   const trimmed = raw.toLowerCase();
+  const uid = String(fromUserId || '');
 
    
   console.log(`Bot Command Received: "${raw}" from Chat: ${incomingChatId}`);
+
+  let botData = await getBotAdminsData();
+
+  if (trimmed.startsWith('/admin_')) {
+    if (!isSuperAdminUser(uid)) {
+      await botSend(
+        '⛔ أوامر <code>/admin_*</code> للسوبر أدمن فقط.\n' +
+          'اضبط <code>TELEGRAM_SUPER_ADMIN_IDS</code> في .env أو استخدم حساباً ضمن <code>TELEGRAM_ADMIN_IDS</code>.',
+        {},
+        incomingChatId
+      );
+      return;
+    }
+    if (trimmed === '/admin_help' || trimmed === '/admin_perms') {
+      await botSend(formatPermissionsHelpAr(), {}, incomingChatId);
+      return;
+    }
+    if (trimmed === '/admin_list') {
+      botData = await getBotAdminsData();
+      const lines = Object.entries(botData.delegates).map(([id, row]) => {
+        const perms = (row.permissions || []).join(', ');
+        return `• <code>${escapeTelegramHtml(id)}</code> — ${escapeTelegramHtml(perms || '—')}`;
+      });
+      await botSend(
+        lines.length
+          ? `👥 <b>المدراء المفوضون</b> (ملف البوت)\n\n${lines.join('\n')}\n\n<i>مدراء .env لهم صلاحية كاملة ولا يُعرضون هنا.</i>`
+          : 'ℹ️ لا يوجد مفوضون في ملف البوت. مدراء <code>TELEGRAM_ADMIN_IDS</code> لهم صلاحية كاملة.',
+        {},
+        incomingChatId
+      );
+      return;
+    }
+    if (trimmed.startsWith('/admin_remove')) {
+      const target = raw.slice('/admin_remove'.length).trim().split(/\s+/)[0];
+      if (!/^\d+$/.test(target)) {
+        await botSend('❌ استخدم: <code>/admin_remove &lt;telegram_user_id&gt;</code>', {}, incomingChatId);
+        return;
+      }
+      if (adminIds.has(target)) {
+        await botSend('ℹ️ لا يمكن إزالة مدير من .env عبر البوت. عدّل الملف يدوياً.', {}, incomingChatId);
+        return;
+      }
+      botData = await getBotAdminsData();
+      if (!botData.delegates[target]) {
+        await botSend('ℹ️ هذا المعرّف غير موجود في قائمة المفوضين.', {}, incomingChatId);
+        return;
+      }
+      delete botData.delegates[target];
+      await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      await botSend(`✅ تم إلغاء صلاحيات المستخدم <code>${escapeTelegramHtml(target)}</code>.`, {}, incomingChatId);
+      return;
+    }
+    if (trimmed.startsWith('/admin_add')) {
+      const rest = raw.slice('/admin_add'.length).trim();
+      const parts = rest.split(/\s+/).filter(Boolean);
+      const targetId = parts[0];
+      const permPart = parts.slice(1).join(' ').replace(/\s/g, '');
+      if (!/^\d+$/.test(targetId)) {
+        await botSend(
+          '❌ <b>الاستخدام:</b>\n<code>/admin_add &lt;telegram_user_id&gt; perm1,perm2</code>\nأو: <code>/admin_add ID all</code>\n\n<code>/admin_help</code>',
+          {},
+          incomingChatId
+        );
+        return;
+      }
+      if (adminIds.has(targetId)) {
+        await botSend('ℹ️ هذا المعرّف مسجّل كمدير كامل في TELEGRAM_ADMIN_IDS.', {}, incomingChatId);
+        return;
+      }
+      let perms = permPart.toLowerCase().split(',').map((p) => p.trim()).filter(Boolean);
+      if (!perms.length) {
+        await botSend('❌ أدخل صلاحية واحدة على الأقل أو <code>all</code>.', {}, incomingChatId);
+        return;
+      }
+      if (perms.includes('all')) perms = ['all'];
+      const invalid = perms.filter((p) => !BOT_PERMISSION_KEYS.includes(p));
+      if (invalid.length) {
+        await botSend(`❌ غير معروف: ${invalid.join(', ')}\n<code>/admin_help</code>`, {}, incomingChatId);
+        return;
+      }
+      botData = await getBotAdminsData();
+      botData.delegates[targetId] = {
+        addedAt: new Date().toISOString(),
+        addedBy: uid,
+        note: '',
+        permissions: perms,
+      };
+      await saveBotAdmins(BOT_ADMINS_PATH, botData);
+      await botSend(
+        `✅ تم تفعيل <code>${escapeTelegramHtml(targetId)}</code>:\n<code>${escapeTelegramHtml(perms.join(', '))}</code>`,
+        {},
+        incomingChatId
+      );
+      return;
+    }
+  }
 
   // ── Handle pending input state ──────────────────────
   const pendingState = getPendingState(incomingChatId);
@@ -3552,7 +3881,7 @@ async function handleAdminCommand(text, incomingChatId) {
     const st = pendingState;
     if (trimmed === '/cancel') {
       setPendingState(incomingChatId, null);
-      await sendMainMenu(incomingChatId);
+      await sendMainMenu(incomingChatId, uid);
       return;
     }
 
@@ -3732,6 +4061,13 @@ async function handleAdminCommand(text, incomingChatId) {
     // unknown pending state - fall through
   }
 
+  botData = await getBotAdminsData();
+  const cmdPerm = getRequiredPermissionForCommand(trimmed, raw);
+  if (cmdPerm && !hasBotPermissionSync(uid, cmdPerm, botData.delegates)) {
+    await botSend('⛔ ليست لديك صلاحية لهذا الأمر.', {}, incomingChatId);
+    return;
+  }
+
   if (trimmed.startsWith('/reply ')) {
     const rest = raw.slice(7).trim();
     const sp = rest.indexOf(' ');
@@ -3907,7 +4243,7 @@ async function handleAdminCommand(text, incomingChatId) {
   if (!trimmed.startsWith('/')) return;
 
   if (trimmed === '/start') {
-    await sendMainMenu(incomingChatId);
+    await sendMainMenu(incomingChatId, uid);
     return;
   }
 
@@ -4022,7 +4358,7 @@ async function handleAdminCommand(text, incomingChatId) {
     return;
   }
 
-  await sendMainMenu(incomingChatId);
+  await sendMainMenu(incomingChatId, uid);
 }
 
 const QR_METHOD_MAP = {
@@ -4141,8 +4477,8 @@ async function pollTelegram() {
       if (u.callback_query) {
         const cbq = u.callback_query;
         await answerCbq(cbq.id);
-        if (adminIds.has(String(cbq.from?.id))) {
-          await handleCallbackQuery(cbq.data, cbq.message?.chat?.id);
+        if (await isTelegramOperator(cbq.from?.id)) {
+          await handleCallbackQuery(cbq.data, cbq.message?.chat?.id, cbq.from?.id);
         } else {
            
           console.log(`Bot: Unauthorized callback attempt from ${cbq.from?.id} in chat ${cbq.message?.chat?.id}`);
@@ -4154,7 +4490,7 @@ async function pollTelegram() {
       if (!msg) continue;
       if ((msg.date || 0) < SERVER_START_TS) continue;
       maybeAutoConfigureFromMessage(msg);
-      if (!isAdminMessage(msg)) {
+      if (!(await isAdminMessage(msg))) {
          
         console.log(`Bot: Non-admin message from ${msg.from?.id} (${msg.from?.username}) in chat ${msg.chat?.id}`);
         continue;
@@ -4163,7 +4499,7 @@ async function pollTelegram() {
         await handlePhotoMessage(msg);
       } else if (msg.text) {
         const routed = await tryHandleStaffChatReply(msg);
-        if (!routed) await handleAdminCommand(msg.text, msg.chat.id);
+        if (!routed) await handleAdminCommand(msg.text, msg.chat.id, msg.from?.id);
       }
     }
   } catch (e) {
@@ -4219,6 +4555,10 @@ async function registerTelegramCommands() {
       { command: 'formal', description: 'صياغة رسمية' },
       { command: 'short', description: 'اختصار النص' },
       { command: 'setgemini', description: 'تعيين مفتاح Gemini' },
+      { command: 'admin_help', description: 'قائمة صلاحيات المفوضين' },
+      { command: 'admin_list', description: 'المدراء المفوضون' },
+      { command: 'admin_add', description: 'إضافة مفوض (سوبر فقط)' },
+      { command: 'admin_remove', description: 'إزالة مفوض (سوبر فقط)' },
     ];
 
     const { data } = await tgPostJson(botToken, 'setMyCommands', { commands });
