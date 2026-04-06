@@ -3317,6 +3317,79 @@ h3 { font-size: 1.25rem; }
   text-shadow: 0 0 18px rgba(52, 211, 153, 0.18);
 }
 
+/* Customer card form: boxed section + copy chips */
+.cc-user-panel {
+  grid-column: 1 / -1;
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.55) 0%, rgba(15, 23, 42, 0.35) 100%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+.cc-user-panel-head {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.cc-user-panel-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: rgba(248, 250, 252, 0.95);
+}
+
+.cc-user-panel .input-group {
+  margin-bottom: 0.75rem;
+}
+
+.cc-user-panel-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .cc-user-panel-row2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cc-user-copy-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.22);
+}
+
+.cc-copy-chip {
+  flex: 1 1 calc(50% - 0.25rem);
+  min-width: 7rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(30, 41, 59, 0.85);
+  color: rgba(191, 219, 254, 0.98);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.cc-copy-chip:hover {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(51, 65, 85, 0.95);
+}
+
+.cc-copy-chip--done {
+  border-color: rgba(52, 211, 153, 0.55);
+  color: rgba(167, 243, 208, 0.98);
+}
+
 .cc-input-wrap {
   position: relative;
 }

