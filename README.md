@@ -1,16 +1,17 @@
-# React + Vite
+# TETHER IQ
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+منصة OTC لبيع وشراء USDT مقابل الدينار العراقي — واجهة **React (Vite)** وخادم **Node.js** (Express)، مع تكامل تيليغرام للطلبات والدعم.
 
-Currently, two official plugins are available:
+## التشغيل المحلي
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+يتطلب Node.js 18+.
 
-## React Compiler
+```bash
+npm install
+npm run dev:all
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- الواجهة: حسب إعداد Vite (عادة `http://localhost:5173`)
+- الـ API: `http://localhost:3000` (أو المنفذ في `.env`)
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+راجع متغيرات البيئة في `.env.example` إن وُجدت، واضبط `TELEGRAM_*` وقاعدة البيانات/المسارات حسب الاستضافة.
