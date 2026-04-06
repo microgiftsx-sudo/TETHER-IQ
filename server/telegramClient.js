@@ -128,18 +128,11 @@ export async function tgGetFile(botToken, fileId) {
   return { res, data };
 }
 
-/**
- * @param {string} callbackQueryId
- * @param {string | { text?: string; show_alert?: boolean }} textOrOpts
- */
-export async function tgAnswerCallbackQuery(botToken, callbackQueryId, textOrOpts = '') {
-  const opts = typeof textOrOpts === 'string' ? { text: textOrOpts } : (textOrOpts || {});
-  const payload = {
+export async function tgAnswerCallbackQuery(botToken, callbackQueryId, text = '') {
+  return tgPostJson(botToken, 'answerCallbackQuery', {
     callback_query_id: callbackQueryId,
-    text: String(opts.text || '').slice(0, 200),
-  };
-  if (opts.show_alert) payload.show_alert = true;
-  return tgPostJson(botToken, 'answerCallbackQuery', payload);
+    text: text.slice(0, 200),
+  });
 }
 
 /** Escape for Telegram HTML parse_mode */
