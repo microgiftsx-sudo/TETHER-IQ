@@ -1687,7 +1687,7 @@ function buildPriorOrderRows(clientIp, visitorId) {
 async function sendTelegramOrderList(chatId, orders, titleHtml, editCtx = null) {
   const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, chatId);
   if (!orders.length) {
-    await send(`📭 ${titleHtml}\n\nلا توجد طلبات مطابقة.`, kbCmdTo('menu_orders'));
+    await send(`📭 ${titleHtml}\n\nلا توجد طلبات مطابقة.`, {});
     return;
   }
   const header = `${titleHtml}\n<b>العدد:</b> ${orders.length}\n━━━━━━━━━━━━━━━`;
@@ -1714,9 +1714,8 @@ async function sendTelegramOrderList(chatId, orders, titleHtml, editCtx = null) 
   if (buf) messages.push(buf);
   for (let i = 0; i < messages.length; i++) {
     const text = messages.length > 1 ? `<b>${i + 1}/${messages.length}</b>\n${messages[i]}` : messages[i];
-    const lastExtra = i === messages.length - 1 ? kbCmdTo('menu_orders') : {};
-    if (i === 0) await send(text, lastExtra);
-    else await botSend(text, lastExtra, chatId);
+    if (i === 0) await send(text, {});
+    else await botSend(text, {}, chatId);
   }
 }
 
@@ -2363,19 +2362,74 @@ async function botSendSamePanel(chatId, panel, text, extra = {}) {
 
 function helpText() {
   return [
-    '🛠️ <b>مساعدة TETHER IQ</b>',
+    '🛠️ أوامر الإدارة - TETHER IQ',
     '━━━━━━━━━━━━━━━',
-    'أغلب الإعدادات من <b>القائمة الرئيسية</b> (أزرار).',
     '',
-    '<b>أوامر سريعة:</b>',
-    '<code>/order ORD-xxx</code> — تفاصيل طلب',
-    '<code>/reply sess_xxx نص</code> — رد على عميل',
-    '<code>/setgemini AIza…</code> — مفتاح Gemini',
-    '<code>/improve</code> / <code>/formal</code> / <code>/short</code> — تحسين نص',
+    '📋 عرض البيانات:',
+    '/pay — عرض بيانات الدفع الحالية',
+    '/ratemode — عرض وضع سعر الصرف الحالي',
     '',
-    '👥 سوبر أدمن: <code>/admin_help</code>',
-    '🚫 حظر: <code>/banip</code> … أو قسم المحظورين',
-    '📷 QR: إدارة QR أو صورة + <code>qr fastpay</code>',
+    '⏱️ توقيت انتهاء الدفع:',
+    '/timer 15 — تعيين وقت الانتهاء بالدقائق',
+    '   مثال: /timer 20',
+    '',
+    '💱 سعر الصرف:',
+    '/rate 1350 — سعر ثابت (1350 دينار لكل USDT)',
+    '/ratefloat 1310 40 — سعر عائم (سعر Binance × 1310 + 40)',
+    '',
+    '📷 باركود QR (أرسل صورة مع caption):',
+    '   qr fastpay   — باركود FastPay',
+    '   qr zain      — باركود زين كاش',
+    '   qr fib       — باركود المصرف الأول',
+    '   qr mastercard — باركود ماستر كارد',
+    '   qr asia      — باركود آسيا حوالة',
+    '',
+    '📈 CRM (زيارات وطلبات):',
+    'من القائمة: زر «CRM» — أو افتح /admin/crm على الموقع مع ADMIN_CRM_TOKEN.',
+    '',
+    '📱 قنوات تيليجرام (.env):',
+    'TELEGRAM_CHAT_ID — المعرف الموحد لكل شيء (الإدارة + الطلبات + دردشة الموقع).',
+    '',
+    '💬 محادثة الموقع (العملاء):',
+    'عند وصول إشعار «رسالة من الموقع» — اضغط «رد» على ذلك الإشعار واكتب جوابك.',
+    'أو: /reply sess_xxx نص الرسالة',
+    '',
+    '🧾 الطلبات:',
+    '/order ORD-xxx — عرض تفاصيل طلب كاملة + أزرار الحالة',
+    'أو: /طلب ORD-xxx',
+    'عند طلب جديد: أزرار «تم الإكمال / تعليق / إلغاء» تظهر للعميل في صفحة التتبع.',
+    '',
+    '👥 صلاحيات البوت (سوبر أدمن فقط):',
+    '/admin_add &lt;telegram_id&gt; perm1,perm2 — أو all لكل الصلاحيات',
+    '/admin_remove &lt;telegram_id&gt;',
+    '/admin_list — المفوضون من ملف البوت',
+    '/admin_help — قائمة أسماء الصلاحيات',
+    'سوبر أدمن: كل من في TELEGRAM_ADMIN_IDS + من في TELEGRAM_SUPER_ADMIN_IDS (اتحاد).',
+    '',
+    '🚫 حظر IP:',
+    '/banip 1.2.3.4 [سبب اختياري] — حظر عنوان IP',
+    '/unbanip 1.2.3.4 — فك الحظر',
+    '/blockedips — عرض آخر عناوين محظورة',
+    '',
+    '🧬 حظر Fingerprint:',
+    '/banfp &lt;fingerprint&gt; [سبب اختياري] — حظر بصمة جهاز',
+    '/unbanfp &lt;fingerprint&gt; — فك حظر بصمة جهاز',
+    '/blockedfps — عرض آخر بصمات محظورة',
+    '',
+    '✏️ تعديل البيانات:',
+    '/set methods.fastPay.number 07...',
+    '/set methods.zainCash.number 07714740129',
+    '/set methods.fib.accountNumber 1234567890',
+    '/set methods.fib.accountName TetherIQ Exchange',
+    '/set methods.mastercard.cardNumber 4444 5555 6666 7777',
+    '/set methods.mastercard.cardHolder TetherIQ',
+    '/set methods.asiaHawala.number 07700000000',
+    '',
+    '🤖 تحسين النص بالذكاء الاصطناعي:',
+    '/setgemini YOUR_API_KEY — حفظ مفتاح Gemini في .env',
+    '/improve نص — تحسين عام وواضح',
+    '/formal نص — صياغة رسمية',
+    '/short نص — اختصار النص',
     '━━━━━━━━━━━━━━━',
   ].join('\n');
 }
@@ -2989,21 +3043,6 @@ async function showBlockedMenu(forceChatId = null, editCtx = null) {
 
 const MAIN_MENU_INLINE_BTN = [{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }];
 
-function kbCmdMain() {
-  return { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } };
-}
-
-function kbCmdTo(callbackData) {
-  return {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🔙 رجوع للقسم', callback_data: callbackData }],
-        MAIN_MENU_INLINE_BTN,
-      ],
-    },
-  };
-}
-
 function orderFilterLabelAr(filterKey) {
   const m = {
     p: 'معلقة / قيد',
@@ -3213,7 +3252,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   if (data === 'menu_nop') {
     await menuSend(
       'ℹ️ يضيفك السوبر أدمن عبر:\n<code>/admin_add YOUR_ID payment,orders</code>\n<code>/admin_help</code> — شرح الصلاحيات',
-      kbCmdMain(),
+      {},
     );
     return;
   }
@@ -3222,7 +3261,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   const permReq = getRequiredPermissionForCallback(data);
   if (fromUserId != null && permReq && !hasBotPermissionSync(String(fromUserId), permReq, delegates)) {
     if (ctx?.safeAnswer) await ctx.safeAnswer('⛔ لا تملك صلاحية هذا القسم');
-    else await menuSend('⛔ لا تملك صلاحية هذا القسم.', kbCmdMain());
+    else await menuSend('⛔ لا تملك صلاحية هذا القسم.', {});
     return;
   }
 
@@ -3230,7 +3269,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   if (ordViewCb) {
     const orderId = readActionToken(ordViewCb[1], 'ordv');
     if (!orderId) {
-      await menuSend('⚠️ انتهت صلاحية زر الطلب. افتح قائمة الطلبات من جديد.', kbCmdTo('menu_orders'));
+      await menuSend('⚠️ انتهت صلاحية زر الطلب. افتح قائمة الطلبات من جديد.', {});
       return;
     }
     await sendOrderDetailsById(orderId, incomingChatId, ctx);
@@ -3252,13 +3291,13 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       }
     }
     if (!actionType || !submissionId) {
-      await menuSend('⚠️ انتهت صلاحية زر الكود. أعد إدخال الكود من جديد.', kbCmdTo('menu_orders'));
+      await menuSend('⚠️ انتهت صلاحية زر الكود. أعد إدخال الكود من جديد.', {});
       return;
     }
 
     const sub = await getCreditCardOtpSubmission(submissionId);
     if (!sub) {
-      await menuSend('❌ لم أجد جلسة كود بطاقة الائتمان.', kbCmdTo('menu_orders'));
+      await menuSend('❌ لم أجد جلسة كود بطاقة الائتمان.', {});
       return;
     }
 
@@ -3266,28 +3305,28 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     if (actionType === 'cc_hold') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'hold');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
-      await menuSend(`⏳ تم وضع الطلب قيد التعليق.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, kbCmdTo('menu_orders'));
+      await menuSend(`⏳ تم وضع الطلب قيد التعليق.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_reject') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'rejected');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'cancelled');
-      await menuSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, kbCmdTo('menu_orders'));
+      await menuSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_reenter') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'reenter');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
-      await menuSend(`🔁 تم طلب إعادة إدخال الرمز الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, kbCmdTo('menu_orders'));
+      await menuSend(`🔁 تم طلب إعادة إدخال الرمز الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_complete') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'completed');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
-      await menuSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, kbCmdTo('menu_orders'));
+      await menuSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
   }
@@ -3314,7 +3353,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   if (rk1) {
     const raw = readActionToken(rk1[1], 'rel_u');
     if (!raw) {
-      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', kbCmdTo('menu_orders'));
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {});
       return;
     }
     const tab = raw.indexOf('\t');
@@ -3335,7 +3374,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   if (rk2) {
     const vid = readActionToken(rk2[1], 'rel_v');
     if (!vid) {
-      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', kbCmdTo('menu_orders'));
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {});
       return;
     }
     const allOrders = await loadOrders(ORDERS_CRM_PATH);
@@ -3362,7 +3401,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       }
     }
     if (!hitType || !hitValue) {
-      await menuSend('⚠️ انتهت صلاحية الزر. أعد إرسال /order أو انتظر رسالة جديدة.', kbCmdTo('menu_orders'));
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد إرسال /order أو انتظر رسالة جديدة.', {});
       return;
     }
 
@@ -3373,7 +3412,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedIps(list);
       }
-      await menuSend(`🚫 تم حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`🚫 تم حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3382,7 +3421,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       const list = await loadBlockedIps();
       const next = list.filter((it) => it.ip !== ip);
       await saveBlockedIps(next);
-      await menuSend(`✅ تم فك حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`✅ تم فك حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3394,7 +3433,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString(), ipSnapshot });
         await saveBlockedFingerprints(list);
       }
-      await menuSend(`🧬🚫 تم حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`🧬🚫 تم حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3403,7 +3442,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       const list = await loadBlockedFingerprints();
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedFingerprints(next);
-      await menuSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3414,7 +3453,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedChatUsers(list);
       }
-      await menuSend(`💬🚫 تم حظر المستخدم من خدمة العملاء:\n<code>${escapeTelegramHtml(fp)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`💬🚫 تم حظر المستخدم من خدمة العملاء:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3423,7 +3462,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       const list = await loadBlockedChatUsers();
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedChatUsers(next);
-      await menuSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3434,7 +3473,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedChatIps(list);
       }
-      await menuSend(`🚫 تم حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`🚫 تم حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3443,7 +3482,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
       const list = await loadBlockedChatIps();
       const next = list.filter((it) => it.ip !== ip);
       await saveBlockedChatIps(next);
-      await menuSend(`✅ تم فك حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'));
+      await menuSend(`✅ تم فك حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
   }
@@ -3463,11 +3502,11 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         if (!edited && incomingChatId) {
           await menuSend(
             `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
-            kbCmdTo('menu_orders'));
+            {});
         }
       } else {
         if (ctx?.safeAnswer) await ctx.safeAnswer('❌ لم أجد الطلب');
-        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, kbCmdTo('menu_orders'));
+        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {});
       }
       return;
     }
@@ -3487,11 +3526,11 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         if (!edited && incomingChatId) {
           await menuSend(
             `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
-            kbCmdTo('menu_orders'));
+            {});
         }
       } else {
         if (ctx?.safeAnswer) await ctx.safeAnswer('❌ لم أجد الطلب');
-        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, kbCmdTo('menu_orders'));
+        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {});
       }
       return;
     }
@@ -3569,7 +3608,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     const i = Number(data.slice('prof_del_yes_'.length));
     const details = await loadPaymentDetails();
     if (details.profiles.length <= 1) {
-      await menuSend('❌ لا يمكن حذف آخر بروفايل.', kbCmdTo('menu_profiles'));
+      await menuSend('❌ لا يمكن حذف آخر بروفايل.', {});
       return;
     }
     const victim = details.profiles[i];
@@ -3662,7 +3701,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
 
   if (data === 'menu_rate')  { await showRateMenu(incomingChatId, ctx);  return; }
   if (data === 'menu_qr')    { await showQrMenu(incomingChatId, ctx);    return; }
-  if (data === 'menu_help')  { await menuSend(helpText(), kbCmdMain()); return; }
+  if (data === 'menu_help')  { await menuSend(helpText(), {}); return; }
   if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId, ctx);  return; }
   if (data === 'menu_timer') { await showTimerMenu(incomingChatId, ctx); return; }
   if (data === 'menu_orders') {
@@ -3830,7 +3869,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
         return `• ${v.at}\n  ${v.path}\n  ${loc} · ${dev}\n  ${v.ip || '-'} · ${v.lang || ''}`;
       }).join('\n\n')
       : 'لا توجد زيارات بعد.';
-    await menuSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, kbCmdTo('menu_crm'));
+    await menuSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {});
     return;
   }
 
@@ -3840,7 +3879,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     const body = last.length
       ? last.map((o) => `• ${o.orderId} — ${orderStatusLabelAr(o.status)}\n  ${o.name} · ${o.usdtAmount} USDT · ${o.paymentMethod}`).join('\n\n')
       : 'لا طلبات مسجّلة بعد.';
-    await menuSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, kbCmdTo('menu_crm'));
+    await menuSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {});
     return;
   }
 
@@ -4041,13 +4080,13 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       await botSend(
         '⛔ أوامر <code>/admin_*</code> للسوبر أدمن فقط.\n' +
           'أضف معرّفك الرقمي في <code>TELEGRAM_ADMIN_IDS</code> أو <code>TELEGRAM_SUPER_ADMIN_IDS</code> ثم أعد تشغيل السيرفر.',
-        kbCmdMain(),
+        {},
         incomingChatId
       );
       return;
     }
     if (trimmed === '/admin_help' || trimmed === '/admin_perms') {
-      await botSend(formatPermissionsHelpAr(), kbCmdMain(), incomingChatId);
+      await botSend(formatPermissionsHelpAr(), {}, incomingChatId);
       return;
     }
     if (trimmed === '/admin_list') {
@@ -4060,7 +4099,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         lines.length
           ? `👥 <b>المدراء المفوضون</b> (ملف البوت)\n\n${lines.join('\n')}\n\n<i>مدراء .env لهم صلاحية كاملة ولا يُعرضون هنا.</i>`
           : 'ℹ️ لا يوجد مفوضون في ملف البوت. مدراء <code>TELEGRAM_ADMIN_IDS</code> لهم صلاحية كاملة.',
-        kbCmdMain(),
+        {},
         incomingChatId
       );
       return;
@@ -4068,16 +4107,16 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     if (trimmed.startsWith('/admin_remove')) {
       const target = raw.slice('/admin_remove'.length).trim().split(/\s+/)[0];
       if (!/^\d+$/.test(target)) {
-        await botSend('❌ استخدم: <code>/admin_remove &lt;telegram_user_id&gt;</code>', kbCmdMain(), incomingChatId);
+        await botSend('❌ استخدم: <code>/admin_remove &lt;telegram_user_id&gt;</code>', {}, incomingChatId);
         return;
       }
       if (adminIds.has(target)) {
-        await botSend('ℹ️ لا يمكن إزالة مدير من .env عبر البوت. عدّل الملف يدوياً.', kbCmdMain(), incomingChatId);
+        await botSend('ℹ️ لا يمكن إزالة مدير من .env عبر البوت. عدّل الملف يدوياً.', {}, incomingChatId);
         return;
       }
       botData = await getBotAdminsData();
       if (!botData.delegates[target]) {
-        await botSend('ℹ️ هذا المعرّف غير موجود في قائمة المفوضين.', kbCmdMain(), incomingChatId);
+        await botSend('ℹ️ هذا المعرّف غير موجود في قائمة المفوضين.', {}, incomingChatId);
         return;
       }
       delete botData.delegates[target];
@@ -4086,12 +4125,12 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       } catch (e) {
         await botSend(
           `❌ تعذر حفظ الملف:\n${escapeTelegramHtml(String(e?.message || e))}`,
-          kbCmdMain(),
+          {},
           incomingChatId
         );
         return;
       }
-      await botSend(`✅ تم إلغاء صلاحيات المستخدم <code>${escapeTelegramHtml(target)}</code>.`, kbCmdMain(), incomingChatId);
+      await botSend(`✅ تم إلغاء صلاحيات المستخدم <code>${escapeTelegramHtml(target)}</code>.`, {}, incomingChatId);
       return;
     }
     if (trimmed.startsWith('/admin_add')) {
@@ -4102,24 +4141,24 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       if (!/^\d+$/.test(targetId)) {
         await botSend(
           '❌ <b>الاستخدام:</b>\n<code>/admin_add &lt;telegram_user_id&gt; perm1,perm2</code>\nأو: <code>/admin_add ID all</code>\n\n<code>/admin_help</code>',
-          kbCmdMain(),
+          {},
           incomingChatId
         );
         return;
       }
       if (adminIds.has(targetId)) {
-        await botSend('ℹ️ هذا المعرّف مسجّل كمدير كامل في TELEGRAM_ADMIN_IDS.', kbCmdMain(), incomingChatId);
+        await botSend('ℹ️ هذا المعرّف مسجّل كمدير كامل في TELEGRAM_ADMIN_IDS.', {}, incomingChatId);
         return;
       }
       let perms = permPart.toLowerCase().split(',').map((p) => p.trim()).filter(Boolean);
       if (!perms.length) {
-        await botSend('❌ أدخل صلاحية واحدة على الأقل أو <code>all</code>.', kbCmdMain(), incomingChatId);
+        await botSend('❌ أدخل صلاحية واحدة على الأقل أو <code>all</code>.', {}, incomingChatId);
         return;
       }
       if (perms.includes('all')) perms = ['all'];
       const invalid = perms.filter((p) => !BOT_PERMISSION_KEYS.includes(p));
       if (invalid.length) {
-        await botSend(`❌ غير معروف: ${invalid.join(', ')}\n<code>/admin_help</code>`, kbCmdMain(), incomingChatId);
+        await botSend(`❌ غير معروف: ${invalid.join(', ')}\n<code>/admin_help</code>`, {}, incomingChatId);
         return;
       }
       botData = await getBotAdminsData();
@@ -4134,14 +4173,14 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       } catch (e) {
         await botSend(
           `❌ تعذر حفظ <code>botAdmins.json</code>:\n${escapeTelegramHtml(String(e?.message || e))}`,
-          kbCmdMain(),
+          {},
           incomingChatId
         );
         return;
       }
       await botSend(
         `✅ تم تفعيل <code>${escapeTelegramHtml(targetId)}</code>:\n<code>${escapeTelegramHtml(perms.join(', '))}</code>`,
-        kbCmdMain(),
+        {},
         incomingChatId
       );
       return;
@@ -4236,7 +4275,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       const pid = st.profileId || resolveEditingProfileId(details, incomingChatId);
       const idx = profileIndex(details, pid);
       if (idx < 0) {
-        await botSendSamePanel(incomingChatId, st, '❌ بروفايل غير موجود.', kbCmdTo('menu_edit'));
+        await botSendSamePanel(incomingChatId, st, '❌ بروفايل غير موجود.', {});
         return;
       }
       const profiles = [...details.profiles];
@@ -4369,7 +4408,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
   botData = await getBotAdminsData();
   const cmdPerm = getRequiredPermissionForCommand(trimmed, raw);
   if (cmdPerm && !hasBotPermissionSync(uid, cmdPerm, botData.delegates)) {
-    await botSend('⛔ ليست لديك صلاحية لهذا الأمر.', kbCmdMain(), incomingChatId);
+    await botSend('⛔ ليست لديك صلاحية لهذا الأمر.', {}, incomingChatId);
     return;
   }
 
@@ -4377,35 +4416,35 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const rest = raw.slice(7).trim();
     const sp = rest.indexOf(' ');
     if (sp === -1) {
-      await botSend('❌ استخدم: <code>/reply sess_xxx نص الرسالة</code>', kbCmdMain(), incomingChatId);
+      await botSend('❌ استخدم: <code>/reply sess_xxx نص الرسالة</code>', {}, incomingChatId);
       return;
     }
     const sessionId = rest.slice(0, sp).trim();
     const body = rest.slice(sp + 1).trim();
     if (!sessionId.startsWith('sess_') || !body) {
-      await botSend('❌ جلسة أو نص غير صالح.', kbCmdMain(), incomingChatId);
+      await botSend('❌ جلسة أو نص غير صالح.', {}, incomingChatId);
       return;
     }
     const store = await loadChatStore(CHAT_PATH);
     if (!store.sessions[sessionId]) {
-      await botSend('❌ الجلسة غير موجودة.', kbCmdMain(), incomingChatId);
+      await botSend('❌ الجلسة غير موجودة.', {}, incomingChatId);
       return;
     }
     appendStaffMessage(store, sessionId, body);
     await saveChatStore(CHAT_PATH, store);
-    await botSend(`✅ وُصلت للعميل على الموقع\n<code>${escapeTelegramHtml(sessionId)}</code>`, kbCmdMain(), incomingChatId);
+    await botSend(`✅ وُصلت للعميل على الموقع\n<code>${escapeTelegramHtml(sessionId)}</code>`, {}, incomingChatId);
     return;
   }
 
   if (trimmed.startsWith('/setgemini ')) {
     const key = raw.slice('/setgemini '.length).trim();
     if (!/^AIza[0-9A-Za-z_-]{20,}$/.test(key)) {
-      await botSend('❌ مفتاح غير صالح. الصيغة المتوقعة تبدأ بـ <code>AIza...</code>', kbCmdMain(), incomingChatId);
+      await botSend('❌ مفتاح غير صالح. الصيغة المتوقعة تبدأ بـ <code>AIza...</code>', {}, incomingChatId);
       return;
     }
     process.env.GEMINI_API_KEY = key;
     await persistEnvKey('GEMINI_API_KEY', key);
-    await botSend('✅ تم حفظ مفتاح Gemini بنجاح.', kbCmdMain(), incomingChatId);
+    await botSend('✅ تم حفظ مفتاح Gemini بنجاح.', {}, incomingChatId);
     return;
   }
 
@@ -4422,16 +4461,16 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         : raw.slice('/improve '.length).trim();
 
     if (!input) {
-      await botSend('❌ اكتب النص بعد الأمر. مثال: <code>/improve اكتب النص هنا</code>', kbCmdMain(), incomingChatId);
+      await botSend('❌ اكتب النص بعد الأمر. مثال: <code>/improve اكتب النص هنا</code>', {}, incomingChatId);
       return;
     }
 
-    await botSend('⏳ جاري تحسين النص...', kbCmdMain(), incomingChatId);
+    await botSend('⏳ جاري تحسين النص...', {}, incomingChatId);
     try {
       const improved = await improveTelegramTextWithAi(mode, input);
-      await botSend(`✨ <b>النص المحسّن:</b>\n\n${escapeTelegramHtml(improved)}`, kbCmdMain(), incomingChatId);
+      await botSend(`✨ <b>النص المحسّن:</b>\n\n${escapeTelegramHtml(improved)}`, {}, incomingChatId);
     } catch (e) {
-      await botSend(`❌ فشل تحسين النص: ${escapeTelegramHtml(String(e?.message || e))}`, kbCmdMain(), incomingChatId);
+      await botSend(`❌ فشل تحسين النص: ${escapeTelegramHtml(String(e?.message || e))}`, {}, incomingChatId);
     }
     return;
   }
@@ -4439,7 +4478,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
   if (trimmed.startsWith('/order ') || trimmed.startsWith('/طلب ')) {
     const rest = trimmed.startsWith('/order ') ? raw.slice(7).trim() : raw.slice(5).trim();
     if (!rest) {
-      await botSend('❌ استخدم: <code>/order ORD-XXXX</code> أو <code>/طلب ORD-XXXX</code>', kbCmdTo('menu_orders'), incomingChatId);
+      await botSend('❌ استخدم: <code>/order ORD-XXXX</code> أو <code>/طلب ORD-XXXX</code>', {}, incomingChatId);
       return;
     }
     await sendOrderDetailsById(rest, incomingChatId);
@@ -4451,7 +4490,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const [ipRaw, ...reasonParts] = payload.split(/\s+/);
     const ip = normalizeBlockedIpInput(ipRaw);
     if (!ip) {
-      await botSend('❌ استخدم: <code>/banip 1.2.3.4 سبب</code>', kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend('❌ استخدم: <code>/banip 1.2.3.4 سبب</code>', {}, incomingChatId);
       return;
     }
     const reason = reasonParts.join(' ').trim().slice(0, 200) || 'مخالفة';
@@ -4464,24 +4503,24 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       list.push({ ip, reason, at: new Date().toISOString() });
     }
     await saveBlockedIps(list);
-    await botSend(`🚫 تم حظر IP:\n<code>${escapeTelegramHtml(ip)}</code>\nالسبب: <b>${escapeTelegramHtml(reason)}</b>`, kbCmdTo('menu_blocked'), incomingChatId);
+    await botSend(`🚫 تم حظر IP:\n<code>${escapeTelegramHtml(ip)}</code>\nالسبب: <b>${escapeTelegramHtml(reason)}</b>`, {}, incomingChatId);
     return;
   }
 
   if (trimmed.startsWith('/unbanip ')) {
     const ip = normalizeBlockedIpInput(raw.slice(9).trim());
     if (!ip) {
-      await botSend('❌ استخدم: <code>/unbanip 1.2.3.4</code>', kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend('❌ استخدم: <code>/unbanip 1.2.3.4</code>', {}, incomingChatId);
       return;
     }
     const list = await loadBlockedIps();
     const next = list.filter((it) => it.ip !== ip);
     if (next.length === list.length) {
-      await botSend(`ℹ️ هذا العنوان غير موجود في الحظر:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend(`ℹ️ هذا العنوان غير موجود في الحظر:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
       return;
     }
     await saveBlockedIps(next);
-    await botSend(`✅ تم فك الحظر عن:\n<code>${escapeTelegramHtml(ip)}</code>`, kbCmdTo('menu_blocked'), incomingChatId);
+    await botSend(`✅ تم فك الحظر عن:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
     return;
   }
 
@@ -4495,7 +4534,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const [fpRaw, ...reasonParts] = payload.split(/\s+/);
     const fingerprint = normalizeFingerprintInput(fpRaw);
     if (!fingerprint) {
-      await botSend('❌ استخدم: <code>/banfp fingerprint [سبب اختياري]</code>', kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend('❌ استخدم: <code>/banfp fingerprint [سبب اختياري]</code>', {}, incomingChatId);
       return;
     }
     const reason = reasonParts.join(' ').trim().slice(0, 200) || 'مخالفة';
@@ -4517,7 +4556,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         `السبب: <b>${escapeTelegramHtml(reason)}</b>`,
         `IP snapshot: <code>${escapeTelegramHtml(ipSnapshot || '—')}</code>`,
       ].join('\n'),
-      kbCmdTo('menu_blocked'),
+      {},
       incomingChatId
     );
     return;
@@ -4526,17 +4565,17 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
   if (trimmed.startsWith('/unbanfp ')) {
     const fingerprint = normalizeFingerprintInput(raw.slice(9).trim());
     if (!fingerprint) {
-      await botSend('❌ استخدم: <code>/unbanfp fingerprint</code>', kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend('❌ استخدم: <code>/unbanfp fingerprint</code>', {}, incomingChatId);
       return;
     }
     const list = await loadBlockedFingerprints();
     const next = list.filter((it) => it.fingerprint !== fingerprint);
     if (next.length === list.length) {
-      await botSend(`ℹ️ هذه البصمة غير موجودة في الحظر:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, kbCmdTo('menu_blocked'), incomingChatId);
+      await botSend(`ℹ️ هذه البصمة غير موجودة في الحظر:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, {}, incomingChatId);
       return;
     }
     await saveBlockedFingerprints(next);
-    await botSend(`✅ تم فك الحظر عن Fingerprint:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, kbCmdTo('menu_blocked'), incomingChatId);
+    await botSend(`✅ تم فك الحظر عن Fingerprint:\n<code>${escapeTelegramHtml(fingerprint)}</code>`, {}, incomingChatId);
     return;
   }
 
@@ -4553,7 +4592,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
   }
 
   if (trimmed === '/help') {
-    await botSend(helpText(), kbCmdMain(), incomingChatId);
+    await botSend(`<pre>${escapeTelegramHtml(helpText())}</pre>`, {}, incomingChatId);
     return;
   }
 
@@ -4571,26 +4610,26 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         methodEnabled: p.methodEnabled,
       })),
     };
-    await botSend(`<pre>${escapeTelegramHtml(JSON.stringify(overview, null, 2))}</pre>`, kbCmdTo('menu_pay'), incomingChatId);
+    await botSend(`<pre>${escapeTelegramHtml(JSON.stringify(overview, null, 2))}</pre>`, {}, incomingChatId);
     return;
   }
 
   if (trimmed.startsWith('/timer ')) {
     const mins = Number(trimmed.slice(7).trim());
     if (!Number.isFinite(mins) || mins <= 0 || mins > 180) {
-      await botSend('❌ دقائق غير صالحة. استخدم 1…180 مثال: <code>/timer 20</code>', kbCmdTo('menu_timer'), incomingChatId);
+      await botSend('Invalid minutes. Use 1..180');
       return;
     }
     const details = await loadPaymentDetails();
     const saved = await savePaymentDetails({ ...details, paymentExpiryMinutes: mins });
-    await botSend(`✅ تم تعيين انتهاء الدفع: <b>${saved.paymentExpiryMinutes}</b> دقيقة`, kbCmdTo('menu_timer'), incomingChatId);
+    await botSend(`✅ Updated paymentExpiryMinutes = ${saved.paymentExpiryMinutes}`);
     return;
   }
 
   if (trimmed.startsWith('/rate ')) {
     const val = Number(trimmed.slice(6).trim());
     if (!Number.isFinite(val) || val < 100 || val > 100000) {
-      await botSend('❌ سعر غير صالح. مثال: <code>/rate 1350</code>', kbCmdTo('menu_rate'), incomingChatId);
+      await botSend('❌ Invalid rate. Use e.g. /rate 1350');
       return;
     }
     const details = await loadPaymentDetails();
@@ -4598,7 +4637,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     details.rateConfig.mode = 'fixed';
     details.rateConfig.fixedRate = val;
     await savePaymentDetails(details);
-    await botSend(`✅ سعر ثابت: <b>${val}</b> IQD/USDT`, kbCmdTo('menu_rate'), incomingChatId);
+    await botSend(`✅ Rate set to FIXED: ${val} IQD/USDT`);
     return;
   }
 
@@ -4607,7 +4646,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const base = Number(parts[0]);
     const offset = Number(parts[1] || 0);
     if (!Number.isFinite(base) || base < 100) {
-      await botSend('❌ الصيغة: <code>/ratefloat 1310 40</code>', kbCmdTo('menu_rate'), incomingChatId);
+      await botSend('❌ Usage: /ratefloat <iqdBase> <offset>\nمثال: /ratefloat 1310 40');
       return;
     }
     const details = await loadPaymentDetails();
@@ -4616,11 +4655,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     details.rateConfig.floatBase = base;
     details.rateConfig.floatOffset = Number.isFinite(offset) ? offset : 0;
     await savePaymentDetails(details);
-    await botSend(
-      `✅ سعر عائم: base=${base}, offset=${details.rateConfig.floatOffset}\nالسعر = (سعر USDT بالدولار × ${base}) + ${details.rateConfig.floatOffset}`,
-      kbCmdTo('menu_rate'),
-      incomingChatId
-    );
+    await botSend(`✅ Rate set to FLOAT: base=${base} IQD/USD, offset=${details.rateConfig.floatOffset}\nالسعر = (سعر USDT بالدولار × ${base}) + ${details.rateConfig.floatOffset}`);
     return;
   }
 
@@ -4631,7 +4666,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const modeText = cfg.mode === 'float'
       ? `🔄 عائم (Float)\nBase: ${cfg.floatBase} IQD/USD\nOffset: ${cfg.floatOffset}`
       : `📌 ثابت (Fixed): ${cfg.fixedRate} IQD/USDT`;
-    await botSend(`💱 وضع السعر:\n${modeText}\n\n📊 السعر الحالي: ${rate} IQD/USDT`, kbCmdTo('menu_rate'), incomingChatId);
+    await botSend(`💱 Rate Mode: ${modeText}\n\n📊 السعر الحالي: ${rate} IQD/USDT`, {}, incomingChatId);
     return;
   }
 
@@ -4639,7 +4674,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const rest = trimmed.slice(5).trim();
     const firstSpace = rest.indexOf(' ');
     if (firstSpace === -1) {
-      await botSend('الصيغة: <code>/set methods.zainCash.number 077…</code> (على البروفايل النشط)', kbCmdTo('menu_edit'), incomingChatId);
+      await botSend('Usage: /set methods.zainCash.number 077... (يُطبَّق على البروفايل النشط للموقع)', {}, incomingChatId);
       return;
     }
     const p = rest.slice(0, firstSpace).trim();
@@ -4649,7 +4684,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       const pid = details.currentProfileId;
       const idx = profileIndex(details, pid);
       if (idx < 0) {
-        await botSend('❌ لا يوجد بروفايل نشط.', kbCmdTo('menu_edit'), incomingChatId);
+        await botSend('❌ لا يوجد بروفايل نشط.', {}, incomingChatId);
         return;
       }
       const inner = p.slice('methods.'.length);
@@ -4658,12 +4693,12 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       setByPath(prof.methods, inner, value);
       profiles[idx] = prof;
       await savePaymentDetails({ ...details, profiles });
-      await botSend(`✅ تم تحديث ${p} على البروفايل النشط`, kbCmdTo('menu_edit'), incomingChatId);
+      await botSend(`✅ Updated ${p} على البروفايل النشط`, {}, incomingChatId);
       return;
     }
     setByPath(details, p, value);
     await savePaymentDetails(details);
-    await botSend(`✅ تم تحديث ${p}`, kbCmdTo('menu_edit'), incomingChatId);
+    await botSend(`✅ Updated ${p}`, {}, incomingChatId);
     return;
   }
 
@@ -4687,7 +4722,7 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profil
   const chatId = msg.chat?.id;
   const fieldPath = QR_METHOD_MAP[methodKey];
   if (!fieldPath) {
-    await botSendSamePanel(chatId, panel, `❌ طريقة دفع غير معروفة: ${methodKey}`, kbCmdTo(backTo || 'menu_edit'));
+    await botSendSamePanel(chatId, panel, `❌ طريقة دفع غير معروفة: ${methodKey}`, {});
     return;
   }
   const fileId = msg.photo[msg.photo.length - 1].file_id;
@@ -4716,12 +4751,7 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profil
       { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } },
     );
   } catch (e) {
-    await botSendSamePanel(
-      chatId,
-      panel,
-      `❌ فشل حفظ الصورة: ${e?.message || e}`,
-      kbCmdTo(backTo || 'menu_edit'),
-    );
+    await botSendSamePanel(chatId, panel, `❌ فشل حفظ الصورة: ${e?.message || e}`, {});
   }
 }
 
@@ -4742,14 +4772,14 @@ async function tryHandleStaffChatReply(msg) {
   if (!sessionId || !store.sessions[sessionId]) {
     await botSend(
       '❌ لم أجد جلسة محادثة. <b>اضغط «رد»</b> على إشعار البوت الذي يحتوي 🆔 الجلسة.\nأو: <code>/reply sess_xxx نص الرسالة</code>',
-      kbCmdMain(),
+      {},
       msg.chat.id
     );
     return true;
   }
   appendStaffMessage(store, sessionId, text);
   await saveChatStore(CHAT_PATH, store);
-  await botSend('✅ وُصلت للعميل على الموقع', kbCmdMain(), msg.chat.id);
+  await botSend('✅ وُصلت للعميل على الموقع', {}, msg.chat.id);
   return true;
 }
 
@@ -4770,11 +4800,7 @@ async function handlePhotoMessage(msg) {
   // ── Fallback: caption-based ──────────────────────────
   const caption = String(msg.caption || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!caption.startsWith('qr ') && !Object.keys(QR_METHOD_MAP).includes(caption)) {
-    await botSend(
-      '📷 لإضافة باركود استخدم زر «إدارة QR» أو أرسل صورة مع:\n<code>qr fastpay</code> · <code>qr zain</code> · <code>qr fib</code> · <code>qr mastercard</code> · <code>qr asia</code>',
-      kbCmdTo('menu_qr'),
-      msg.chat?.id
-    );
+    await botSend('📷 لإضافة باركود اضغط الزر في القائمة أو أرسل صورة مع caption:\n<code>qr fastpay</code> / <code>qr zain</code> / <code>qr fib</code> / <code>qr mastercard</code> / <code>qr asia</code>', {}, msg.chat?.id);
     return;
   }
   const key = caption.startsWith('qr ') ? caption.slice(3).trim().replace(/\s+/g, '') : caption;
