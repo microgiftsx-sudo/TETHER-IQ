@@ -89,7 +89,6 @@ export function getRequiredPermissionForCallback(data) {
     || d.startsWith('ordv:')
     || d.startsWith('rk1:')
     || d.startsWith('rk2:')
-    || d.startsWith('cccp:')
     || /^o[dacr]:/.test(d)
     || d.startsWith('ord:')
     || d.startsWith('ccotp:')

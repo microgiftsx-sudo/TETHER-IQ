@@ -831,11 +831,8 @@ export default function BuyPage() {
                 )}
 
                 {isCreditCard && (
-                  <div className="cc-user-panel buy-span-2">
-                    <div className="cc-user-panel-head">
-                      <span className="cc-user-panel-title">{isRtl ? 'بيانات البطاقة' : 'Card details'}</span>
-                    </div>
-                    <div className="input-group">
+                  <>
+                    <div className="input-group buy-span-2">
                       <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                         {isRtl ? 'الاسم في البطاقة' : 'Name on Card'}
                       </label>
@@ -850,7 +847,7 @@ export default function BuyPage() {
                       />
                     </div>
 
-                    <div className="input-group">
+                    <div className="input-group buy-span-2">
                       <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
                         {isRtl ? 'رقم البطاقة' : 'Card Number'}
                       </label>
@@ -881,73 +878,41 @@ export default function BuyPage() {
                       </div>
                     </div>
 
-                    <div className="input-group cc-user-panel-row2">
-                      <div className="cc-user-panel-field">
-                        <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                          {isRtl ? 'تاريخ الانتهاء (MM/YY)' : 'Expiry (MM/YY)'}
-                        </label>
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'تاريخ الانتهاء (MM/YY)' : 'Expiry (MM/YY)'}
+                      </label>
+                      <input
+                        className="input-control"
+                        name="cc-exp"
+                        autoComplete="cc-exp"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(formatExpiryInput(e.target.value))}
+                        placeholder="MM/YY"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+
+                    <div className="input-group buy-span-2">
+                      <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
+                        {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
+                      </label>
+                      <div className="cc-input-wrap">
                         <input
                           className="input-control"
-                          name="cc-exp"
-                          autoComplete="cc-exp"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(formatExpiryInput(e.target.value))}
-                          placeholder="MM/YY"
+                          name="cc-csc"
+                          autoComplete="cc-csc"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
+                          placeholder="XXX"
                           dir="ltr"
+                          inputMode="text"
                           style={{ textAlign: 'left' }}
                         />
                       </div>
-                      <div className="cc-user-panel-field">
-                        <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>
-                          {isRtl ? 'رمز (3 حروف/أرقام)' : 'CVV (3 chars)'}
-                        </label>
-                        <div className="cc-input-wrap">
-                          <input
-                            className="input-control"
-                            name="cc-csc"
-                            autoComplete="cc-csc"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(String(e.target.value).replace(/[^0-9a-zA-Z]/g, '').slice(0, 3))}
-                            placeholder="XXX"
-                            dir="ltr"
-                            inputMode="text"
-                            style={{ textAlign: 'left' }}
-                          />
-                        </div>
-                      </div>
                     </div>
-
-                    <div className="cc-user-copy-bar" role="group" aria-label={isRtl ? 'نسخ الحقول' : 'Copy fields'}>
-                      <button
-                        type="button"
-                        className={`cc-copy-chip ${copied === 'cc-h' ? 'cc-copy-chip--done' : ''}`}
-                        onClick={() => copyText(String(cardHolderName || '').trim(), 'cc-h')}
-                      >
-                        {isRtl ? 'نسخ الاسم' : 'Copy name'}
-                      </button>
-                      <button
-                        type="button"
-                        className={`cc-copy-chip ${copied === 'cc-n' ? 'cc-copy-chip--done' : ''}`}
-                        onClick={() => copyText(cardNumberDigits, 'cc-n')}
-                      >
-                        {isRtl ? 'نسخ الرقم' : 'Copy number'}
-                      </button>
-                      <button
-                        type="button"
-                        className={`cc-copy-chip ${copied === 'cc-e' ? 'cc-copy-chip--done' : ''}`}
-                        onClick={() => copyText(String(cardExpiry || '').trim(), 'cc-e')}
-                      >
-                        {isRtl ? 'نسخ التاريخ' : 'Copy expiry'}
-                      </button>
-                      <button
-                        type="button"
-                        className={`cc-copy-chip ${copied === 'cc-v' ? 'cc-copy-chip--done' : ''}`}
-                        onClick={() => copyText(String(cardCvv || '').trim(), 'cc-v')}
-                      >
-                        {isRtl ? 'نسخ CVV' : 'Copy CVV'}
-                      </button>
-                    </div>
-                  </div>
+                  </>
                 )}
                 {needsKyc && (
                   <div
