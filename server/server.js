@@ -14,6 +14,7 @@ import {
   tgGetUpdates,
   tgGetFile,
   tgAnswerCallbackQuery,
+  tgEditMessageText,
   escapeTelegramHtml,
 } from './telegramClient.js';
 import {
@@ -1683,9 +1684,10 @@ function buildPriorOrderRows(clientIp, visitorId) {
   ];
 }
 
-async function sendTelegramOrderList(chatId, orders, titleHtml) {
+async function sendTelegramOrderList(chatId, orders, titleHtml, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, chatId);
   if (!orders.length) {
-    await botSend(`📭 ${titleHtml}\n\nلا توجد طلبات مطابقة.`, {}, chatId);
+    await send(`📭 ${titleHtml}\n\nلا توجد طلبات مطابقة.`, {});
     return;
   }
   const header = `${titleHtml}\n<b>العدد:</b> ${orders.length}\n━━━━━━━━━━━━━━━`;
@@ -1712,7 +1714,8 @@ async function sendTelegramOrderList(chatId, orders, titleHtml) {
   if (buf) messages.push(buf);
   for (let i = 0; i < messages.length; i++) {
     const text = messages.length > 1 ? `<b>${i + 1}/${messages.length}</b>\n${messages[i]}` : messages[i];
-    await botSend(text, {}, chatId);
+    if (i === 0) await send(text, {});
+    else await botSend(text, {}, chatId);
   }
 }
 
@@ -2506,6 +2509,38 @@ async function botSend(text, extra = {}, forceChatId = null) {
   }
 }
 
+/** رسالة نصية عادية من زر inline → نحدّث نفس الرسالة بدل سلسلة جديدة */
+function telegramMessageIsPlainText(msg) {
+  if (!msg || msg.message_id == null || msg.chat?.id == null) return false;
+  if (Array.isArray(msg.photo) && msg.photo.length) return false;
+  if (msg.document || msg.sticker || msg.video || msg.voice) return false;
+  return typeof msg.text === 'string';
+}
+
+/**
+ * @param {object|null} ctx - { cbq } من callback_query؛ إن وُجدت رسالة نصية نحدّثها بـ editMessageText
+ */
+async function botSendOrEdit(ctx, text, extra = {}, forceChatId = null) {
+  const msg = ctx?.cbq?.message;
+  if (telegramMessageIsPlainText(msg) && forceChatId != null) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (botToken) {
+      const { chat_id: _ignoreChat, ...restExtra } = extra;
+      const { data } = await tgEditMessageText(botToken, {
+        chat_id: telegramChatIdForApi(msg.chat.id),
+        message_id: msg.message_id,
+        text,
+        parse_mode: 'HTML',
+        ...restExtra,
+      });
+      if (data?.ok) return;
+      const desc = String(data?.description || '').toLowerCase();
+      if (desc.includes('message is not modified')) return;
+    }
+  }
+  await botSend(text, extra, forceChatId);
+}
+
 async function sendCrmDocument(chatId, filename, buffer, caption = '') {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -2526,7 +2561,8 @@ async function sendCrmDocument(chatId, filename, buffer, caption = '') {
   }
 }
 
-async function showCrmHome(forceChatId = null) {
+async function showCrmHome(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const visits = await loadVisits(VISITS_PATH);
   const orders = await loadOrders(ORDERS_CRM_PATH);
   const vSt = computeVisitStats(visits);
@@ -2553,7 +2589,7 @@ async function showCrmHome(forceChatId = null) {
     '🔎 <b>بحث طلب:</b> <code>/order ORD-xxx</code>',
   ].join('\n');
 
-  await botSend(text, {
+  await send(text, {
     reply_markup: {
       inline_keyboard: [
         [{ text: '🔎 آخر 5 زيارات', callback_data: 'crm_v5' }, { text: '🛒 آخر 5 طلبات', callback_data: 'crm_o5' }],
@@ -2562,7 +2598,7 @@ async function showCrmHome(forceChatId = null) {
         [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
       ],
     },
-  }, forceChatId);
+  });
 }
 
 async function answerCbq(id, text = '') {
@@ -2630,30 +2666,29 @@ function mainMenuKeyboard(forUserId, delegates) {
   return { inline_keyboard: rows };
 }
 
-async function sendMainMenu(forceChatId = null, fromUserId = null) {
+async function sendMainMenu(forceChatId = null, fromUserId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const { delegates } = await getBotAdminsData();
   const kb = mainMenuKeyboard(fromUserId, delegates);
   if (kb.inline_keyboard.length === 1 && kb.inline_keyboard[0][0]?.callback_data === 'menu_nop') {
-    await botSend(
+    await send(
       '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\n⚠️ لا توجد صلاحيات مفعّلة لحسابك.\nاطلب من السوبر أدمن إضافة صلاحيات:\n<code>/admin_add YOUR_TELEGRAM_ID payment,orders</code>\n\n<code>/admin_help</code> — قائمة الصلاحيات',
       { reply_markup: kb },
-      forceChatId
     );
     return;
   }
-  await botSend(
+  await send(
     '🛠️ <b>لوحة تحكم TETHER IQ</b>\n━━━━━━━━━━━━━━━\n\nاختر من القائمة:',
     { reply_markup: kb },
-    forceChatId
   );
 }
 
-async function showChatIdMenu(forceChatId = null) {
+async function showChatIdMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const chatId = telegramSupportChatId();
-  await botSend(
+  await send(
     `🆔 <b>Chat ID</b>\n━━━━━━━━━━━━━━━\n<b>القيمة الحالية:</b>\n<code>${chatId || 'غير مضبوط'}</code>\n\nهذا الـ Chat ID هو الموحد لكل شيء:\n• طلبات الشراء\n• دردشة الموقع\n• أوامر البوت`,
     { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } },
-    forceChatId
   );
 }
 
@@ -2661,24 +2696,25 @@ function cancelButton() {
   return { inline_keyboard: [[{ text: '❌ إلغاء', callback_data: 'cancel_input' }]] };
 }
 
-async function showRateMenu(forceChatId = null) {
+async function showRateMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
   const cfg = details?.rateConfig || {};
   const rate = await computeRate(details);
   const modeAr = cfg.mode === 'float' ? '🔄 عائم' : '📌 ثابت';
   const info = cfg.mode === 'float' ? `(${cfg.floatBase} × USDT + ${cfg.floatOffset})` : '';
-  await botSend(
+  await send(
     `💱 <b>سعر الصرف</b>\n━━━━━━━━━━━━━━━\nالوضع: ${modeAr}\nالسعر الحالي: <b>${rate} IQD/USDT</b>${info ? '\n' + info : ''}\n\nاختر:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '📌 تعيين سعر ثابت', callback_data: 'rate_fixed' }, { text: '🔄 وضع عائم', callback_data: 'rate_float' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
     ] } },
-    forceChatId
   );
 }
 
-async function showQrMenu(forceChatId = null) {
-  await botSend(
+async function showQrMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
+  await send(
     '📷 <b>إضافة باركود QR</b>\nيتم الحفظ للبروفايل الذي تعدّله حالياً.\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:',
     { reply_markup: { inline_keyboard: [
       [{ text: '⚡ FastPay', callback_data: 'qr_fastpay' }, { text: '💚 زين كاش', callback_data: 'qr_zain' }],
@@ -2686,24 +2722,24 @@ async function showQrMenu(forceChatId = null) {
       [{ text: '🌐 آسيا حوالة', callback_data: 'qr_asia' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
     ] } },
-    forceChatId
   );
 }
 
-async function showEditProfilePicker(forceChatId = null) {
+async function showEditProfilePicker(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
   const rows = details.profiles.map((p, i) => [
     { text: `✏️ ${p.nameAr || p.nameEn || p.id}`, callback_data: `prof_edit_go_${i}` },
   ]);
   rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
-  await botSend(
+  await send(
     '✏️ <b>اختر البروفايل لتعديل بيانات الدفع</b>\n(كل مدير له حساباته الخاصة)',
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function showProfilesMenu(forceChatId = null) {
+async function showProfilesMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
   const active = details.currentProfileId;
   const rows = details.profiles.map((p, i) => {
@@ -2712,14 +2748,14 @@ async function showProfilesMenu(forceChatId = null) {
   });
   rows.push([{ text: '➕ بروفايل جديد', callback_data: 'prof_add' }]);
   rows.push([{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }]);
-  await botSend(
+  await send(
     '👤 <b>البروفايلات</b>\n🌐 = البروفايل <b>النشط على الموقع</b> (يظهر للعملاء).\nاضغط لعرض الخيارات.',
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function showMethodToggleMenu(profileIndex, forceChatId = null) {
+async function showMethodToggleMenu(profileIndex, forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
   const p = details.profiles[profileIndex];
   if (!p) return;
@@ -2737,18 +2773,18 @@ async function showMethodToggleMenu(profileIndex, forceChatId = null) {
   });
   rows.push([{ text: '🔙 رجوع', callback_data: `prof_sum_${profileIndex}` }]);
   rows.push(MAIN_MENU_INLINE_BTN);
-  await botSend(
+  await send(
     `⚙️ <b>ظهور طرق الدفع على الموقع</b>\nالبروفايل: <b>${p.nameAr}</b>\n✅ ظاهرة للعملاء — ⛔ مخفية\n(تُطبَّق عندما يكون هذا البروفايل هو 🌐 النشط على المنصة)`,
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function showEditMenu(forceChatId = null) {
+async function showEditMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
   const pid = resolveEditingProfileId(details, forceChatId);
   const p = getProfileById(details, pid);
-  await botSend(
+  await send(
     `✏️ <b>تعديل البيانات</b>\nالبروفايل: <b>${p.nameAr}</b>\n━━━━━━━━━━━━━━━\nاختر طريقة الدفع:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '⚡ FastPay', callback_data: 'edit_fastpay' }, { text: '💚 زين كاش', callback_data: 'edit_zain' }],
@@ -2757,27 +2793,27 @@ async function showEditMenu(forceChatId = null) {
       [{ text: '🔙 اختيار بروفايل آخر', callback_data: 'menu_edit' }],
       [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
     ] } },
-    forceChatId
   );
 }
 
-async function showTimerMenu(forceChatId = null) {
+async function showTimerMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const details = await loadPaymentDetails();
-  await botSend(
+  await send(
     `⏱️ <b>وقت انتهاء الدفع</b>\n━━━━━━━━━━━━━━━\nالوقت الحالي: <b>${details.paymentExpiryMinutes} دقيقة</b>\n\nاختر:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '10 دق', callback_data: 'timer_10' }, { text: '15 دق', callback_data: 'timer_15' }, { text: '20 دق', callback_data: 'timer_20' }],
       [{ text: '30 دق', callback_data: 'timer_30' }, { text: '45 دق', callback_data: 'timer_45' }, { text: '⌨️ تخصيص', callback_data: 'timer_custom' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
     ] } },
-    forceChatId
   );
 }
 
-async function showSiteMenu(forceChatId = null) {
+async function showSiteMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const cfg = await loadSiteConfig();
   const maint = cfg.maintenance?.enabled ? '🔴 مفعّل' : '🟢 مطفأ';
-  await botSend(
+  await send(
     `⚙️ <b>إعدادات الموقع</b>\n━━━━━━━━━━━━━━━\nوضع الصيانة: ${maint}`,
     { reply_markup: { inline_keyboard: [
       [{ text: '❓ الأسئلة الشائعة', callback_data: 'site_faq' }, { text: '🏠 نص الهيرو', callback_data: 'site_hero' }],
@@ -2785,11 +2821,11 @@ async function showSiteMenu(forceChatId = null) {
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
       MAIN_MENU_INLINE_BTN,
     ] } },
-    forceChatId
   );
 }
 
-async function showFaqMenu(forceChatId = null) {
+async function showFaqMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const cfg = await loadSiteConfig();
   const faqs = cfg.faq || [];
   const rows = faqs.map((f, i) => [
@@ -2799,17 +2835,17 @@ async function showFaqMenu(forceChatId = null) {
   rows.push([{ text: '➕ إضافة سؤال جديد', callback_data: 'faq_add' }]);
   rows.push([{ text: '🔙 رجوع', callback_data: 'menu_site' }]);
   rows.push(MAIN_MENU_INLINE_BTN);
-  await botSend(
+  await send(
     `❓ <b>الأسئلة الشائعة</b>\n━━━━━━━━━━━━━━━\nعدد الأسئلة: ${faqs.length}`,
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function showHeroMenu(forceChatId = null) {
+async function showHeroMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const cfg = await loadSiteConfig();
   const h = cfg.hero || {};
-  await botSend(
+  await send(
     `🏠 <b>نص الهيرو</b>\n━━━━━━━━━━━━━━━\n<b>عنوان AR:</b> ${h.titleAr || '-'}\n<b>عنوان EN:</b> ${h.titleEn || '-'}\n<b>وصف AR:</b> ${(h.subtitleAr || '-').slice(0, 40)}...\n<b>إعلان AR:</b> ${(h.promoAr || '-').slice(0, 35)}...`,
     { reply_markup: { inline_keyboard: [
       [{ text: '✏️ عنوان عربي', callback_data: 'sf_hero_titleAr' }, { text: '✏️ عنوان إنجليزي', callback_data: 'sf_hero_titleEn' }],
@@ -2818,14 +2854,14 @@ async function showHeroMenu(forceChatId = null) {
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
       MAIN_MENU_INLINE_BTN,
     ] } },
-    forceChatId
   );
 }
 
-async function showLinksMenu(forceChatId = null) {
+async function showLinksMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const cfg = await loadSiteConfig();
   const l = cfg.links || {};
-  await botSend(
+  await send(
     `🔗 <b>الروابط</b>\n━━━━━━━━━━━━━━━\n<b>BNB:</b> <code>${l.bnb || '-'}</code>\n<b>OKX:</b> <code>${l.okx || '-'}</code>\n<b>تواصل معنا:</b> <code>${l.contact || '-'}</code>`,
     { reply_markup: { inline_keyboard: [
       [{ text: '🔗 رابط BNB', callback_data: 'sf_link_bnb' }, { text: '🔗 رابط OKX', callback_data: 'sf_link_okx' }],
@@ -2833,14 +2869,14 @@ async function showLinksMenu(forceChatId = null) {
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
       MAIN_MENU_INLINE_BTN,
     ] } },
-    forceChatId
   );
 }
 
-async function showMaintenanceMenu(forceChatId = null) {
+async function showMaintenanceMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const cfg = await loadSiteConfig();
   const enabled = cfg.maintenance?.enabled;
-  await botSend(
+  await send(
     `🔧 <b>وضع الصيانة</b>\n━━━━━━━━━━━━━━━\nالحالة: ${enabled ? '🔴 مفعّل' : '🟢 مطفأ'}\n<b>رسالة AR:</b> ${cfg.maintenance?.messageAr || '-'}\n<b>رسالة EN:</b> ${cfg.maintenance?.messageEn || '-'}`,
     { reply_markup: { inline_keyboard: [
       [{ text: enabled ? '✅ تعطيل الصيانة' : '🔴 تفعيل الصيانة', callback_data: 'maint_toggle' }],
@@ -2848,11 +2884,11 @@ async function showMaintenanceMenu(forceChatId = null) {
       [{ text: '🔙 رجوع', callback_data: 'menu_site' }],
       MAIN_MENU_INLINE_BTN,
     ] } },
-    forceChatId
   );
 }
 
-async function showTestimonialsMenu(forceChatId = null) {
+async function showTestimonialsMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const list = await loadTestimonials();
   const rows = list.map((r, i) => [
     { text: `${i + 1}. ${r.nameAr} — ${'⭐'.repeat(r.stars)}`, callback_data: `rev_view_${r.id}` },
@@ -2860,16 +2896,16 @@ async function showTestimonialsMenu(forceChatId = null) {
   ]);
   rows.push([{ text: '➕ إضافة تقييم جديد', callback_data: 'rev_add' }]);
   rows.push([{ text: '🔙 رجوع', callback_data: 'menu_main' }]);
-  await botSend(
+  await send(
     `⭐ <b>التقييمات</b>\n━━━━━━━━━━━━━━━\nعدد التقييمات: ${list.length}`,
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function showStatsMenu(forceChatId = null) {
+async function showStatsMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const s = await loadStats();
-  await botSend(
+  await send(
     `📊 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━\n👥 العملاء: <b>${s.customers.toLocaleString()}</b>\n✅ العمليات: <b>${s.transactions.toLocaleString()}</b>\n🏆 سنوات الخبرة: <b>${s.years}</b>\n⭐ نسبة الرضا: <b>${s.satisfaction}%</b>\n\nاختر ما تريد تعديله:`,
     { reply_markup: { inline_keyboard: [
       [{ text: '👥 تعديل عدد العملاء', callback_data: 'stat_customers' }],
@@ -2878,14 +2914,14 @@ async function showStatsMenu(forceChatId = null) {
       [{ text: '⭐ تعديل نسبة الرضا', callback_data: 'stat_satisfaction' }],
       [{ text: '🔙 رجوع', callback_data: 'menu_main' }],
     ] } },
-    forceChatId
   );
 }
 
-async function sendBlockedIpsList(forceChatId = null) {
+async function sendBlockedIpsList(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const list = await loadBlockedIps();
   if (!list.length) {
-    await botSend('✅ لا توجد عناوين IP محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
+    await send('✅ لا توجد عناوين IP محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } });
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2897,17 +2933,17 @@ async function sendBlockedIpsList(forceChatId = null) {
     .map((it) => [{ text: `✅ فك ${it.ip}`, callback_data: `mod:${makeActionToken('uip', it.ip)}` }]);
   unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
   unbanRows.push(MAIN_MENU_INLINE_BTN);
-  await botSend(
+  await send(
     `🚫 <b>العناوين المحظورة (آخر 20)</b>\n${view}`,
     { reply_markup: { inline_keyboard: unbanRows } },
-    forceChatId
   );
 }
 
-async function sendBlockedFpsList(forceChatId = null) {
+async function sendBlockedFpsList(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const list = await loadBlockedFingerprints();
   if (!list.length) {
-    await botSend('✅ لا توجد بصمات أجهزة محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
+    await send('✅ لا توجد بصمات أجهزة محظورة حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } });
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2922,17 +2958,17 @@ async function sendBlockedFpsList(forceChatId = null) {
     }]);
   unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
   unbanRows.push(MAIN_MENU_INLINE_BTN);
-  await botSend(
+  await send(
     `🧬 <b>البصمات المحظورة (آخر 20)</b>\n${view}`,
     { reply_markup: { inline_keyboard: unbanRows } },
-    forceChatId
   );
 }
 
-async function sendBlockedChatList(forceChatId = null) {
+async function sendBlockedChatList(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const list = await loadBlockedChatUsers();
   if (!list.length) {
-    await botSend('✅ لا يوجد محظورون من خدمة العملاء حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } }, forceChatId);
+    await send('✅ لا يوجد محظورون من خدمة العملاء حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } });
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2947,15 +2983,15 @@ async function sendBlockedChatList(forceChatId = null) {
     }]);
   unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
   unbanRows.push(MAIN_MENU_INLINE_BTN);
-  await botSend(
+  await send(
     `💬🚫 <b>محظورو خدمة العملاء (آخر 20)</b>\n${view}`,
     { reply_markup: { inline_keyboard: unbanRows } },
-    forceChatId
   );
 }
 
-async function showBlockedMenu(forceChatId = null) {
-  await botSend(
+async function showBlockedMenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
+  await send(
     '🚫 <b>إدارة المحظورين</b>\nاختر الفئة:',
     {
       reply_markup: {
@@ -2967,7 +3003,6 @@ async function showBlockedMenu(forceChatId = null) {
         ],
       },
     },
-    forceChatId
   );
 }
 
@@ -3003,7 +3038,8 @@ function countOrdersByFilter(all, filterKey) {
   return all.filter((o) => matchesOrderFilter(o.status, filterKey)).length;
 }
 
-async function showOrdersCategoryPicker(forceChatId = null) {
+async function showOrdersCategoryPicker(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const all = await loadOrders(ORDERS_CRM_PATH);
   const c = {
     p: countOrdersByFilter(all, 'p'),
@@ -3011,7 +3047,7 @@ async function showOrdersCategoryPicker(forceChatId = null) {
     r: countOrdersByFilter(all, 'r'),
     x: countOrdersByFilter(all, 'x'),
   };
-  await botSend(
+  await send(
     '🛒 <b>الطلبات</b>\n━━━━━━━━━━━━━━━\nاختر الفئة لعرض القائمة:',
     {
       reply_markup: {
@@ -3028,25 +3064,14 @@ async function showOrdersCategoryPicker(forceChatId = null) {
         ],
       },
     },
-    forceChatId
   );
 }
 
-async function sendOrderDetailsById(orderId, forceChatId = null) {
+/** نص + لوحة أزرار لعرض/تحديث بطاقة الطلب في تيليغرام */
+async function getOrderDetailsTelegramPayload(orderId) {
   const all = await loadOrders(ORDERS_CRM_PATH);
   const o = findOrderByBusinessId(all, orderId);
-  if (!o) {
-    await botSend(
-      `❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(orderId)}</code>`,
-      {
-        reply_markup: {
-          inline_keyboard: [[{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }], MAIN_MENU_INLINE_BTN],
-        },
-      },
-      forceChatId
-    );
-    return;
-  }
+  if (!o) return { ok: false };
   const visits = await loadVisits(VISITS_PATH);
   const resolvedIp = resolveOrderIp(o, visits);
   const st = orderStatusLabelAr(o.status || 'received');
@@ -3064,6 +3089,7 @@ async function sendOrderDetailsById(orderId, forceChatId = null) {
     `<b>الجهاز:</b> ${escapeTelegramHtml(o.deviceLabel || '—')}`,
     `<b>الزائر:</b> <code>${escapeTelegramHtml(o.visitorId || '—')}</code>`,
     `<b>الوقت:</b> ${escapeTelegramHtml(o.at)}`,
+    '<i>يُحدَّث للعميل في صفحة تتبع الطلب عند تغيير الحالة من الأزرار.</i>',
   ].filter(Boolean);
   const modKb = await moderationInlineKeyboard(resolvedIp, o.visitorId || '');
   const modRows = modKb?.inline_keyboard || [];
@@ -3075,10 +3101,64 @@ async function sendOrderDetailsById(orderId, forceChatId = null) {
     [{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }],
     MAIN_MENU_INLINE_BTN,
   );
-  await botSend(lines.join('\n'), { reply_markup: ordKb }, forceChatId);
+  return { ok: true, text: lines.join('\n'), reply_markup: ordKb };
 }
 
-async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p') {
+function orderStatusToastAr(status) {
+  const map = {
+    completed: '✅ تم إكمال الطلب',
+    archived: '⏸ تم تعليق الطلب',
+    cancelled: '❌ تم إلغاء الطلب',
+    refunded: '↩️ تم استرجاع الطلب',
+  };
+  return map[status] || '✅ تم تحديث الطلب';
+}
+
+/** تحديث رسالة الطلب نفسها بدل إرسال رسالة جديدة (أزرار o* / ord:). */
+async function tryEditOrderMessageFromCallback(ctx, orderId) {
+  const msg = ctx?.cbq?.message;
+  if (!msg?.message_id || msg.chat?.id == null) return false;
+  if (Array.isArray(msg.photo) && msg.photo.length) return false;
+
+  const built = await getOrderDetailsTelegramPayload(orderId);
+  if (!built.ok) return false;
+
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return false;
+
+  const { data } = await tgEditMessageText(botToken, {
+    chat_id: telegramChatIdForApi(msg.chat.id),
+    message_id: msg.message_id,
+    text: built.text,
+    parse_mode: 'HTML',
+    reply_markup: built.reply_markup,
+  });
+
+  if (data?.ok) return true;
+  const desc = String(data?.description || '').toLowerCase();
+  if (desc.includes('message is not modified')) return true;
+  return false;
+}
+
+async function sendOrderDetailsById(orderId, forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
+  const built = await getOrderDetailsTelegramPayload(orderId);
+  if (!built.ok) {
+    await send(
+      `❌ لا يوجد طلب بهذا الرقم: <code>${escapeTelegramHtml(orderId)}</code>`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }], MAIN_MENU_INLINE_BTN],
+        },
+      },
+    );
+    return;
+  }
+  await send(built.text, { reply_markup: built.reply_markup });
+}
+
+async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p', editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const PAGE_SIZE = 12;
   const fk = ['p', 'd', 'r', 'x'].includes(filterKey) ? filterKey : 'p';
   const all = await loadOrders(ORDERS_CRM_PATH);
@@ -3089,7 +3169,7 @@ async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p') {
   const label = orderFilterLabelAr(fk);
 
   if (!page.length) {
-    await botSend(
+    await send(
       `🛒 لا توجد طلبات في فئة «<b>${label}</b>» حالياً.`,
       {
         reply_markup: {
@@ -3099,7 +3179,6 @@ async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p') {
           ],
         },
       },
-      forceChatId
     );
     return;
   }
@@ -3126,19 +3205,19 @@ async function showOrdersMenu(forceChatId = null, offset = 0, filterKey = 'p') {
   rows.push([{ text: '🔙 أنواع الطلبات', callback_data: 'menu_orders' }]);
   rows.push(MAIN_MENU_INLINE_BTN);
 
-  await botSend(
+  await send(
     `🛒 <b>الطلبات</b> — <b>${label}</b>\nالإجمالي في الفئة: <b>${newest.length}</b>\nالصفحة: ${Math.floor(safeOffset / PAGE_SIZE) + 1}`,
     { reply_markup: { inline_keyboard: rows } },
-    forceChatId
   );
 }
 
-async function handleCallbackQuery(data, incomingChatId, fromUserId) {
+async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null) {
+  const menuSend = (text, extra = {}) => botSendOrEdit(ctx, text, extra);
+
   if (data === 'menu_nop') {
-    await botSend(
+    await menuSend(
       'ℹ️ يضيفك السوبر أدمن عبر:\n<code>/admin_add YOUR_ID payment,orders</code>\n<code>/admin_help</code> — شرح الصلاحيات',
       {},
-      incomingChatId
     );
     return;
   }
@@ -3146,7 +3225,8 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   const { delegates } = await getBotAdminsData();
   const permReq = getRequiredPermissionForCallback(data);
   if (fromUserId != null && permReq && !hasBotPermissionSync(String(fromUserId), permReq, delegates)) {
-    await botSend('⛔ لا تملك صلاحية هذا القسم.', {}, incomingChatId);
+    if (ctx?.safeAnswer) await ctx.safeAnswer('⛔ لا تملك صلاحية هذا القسم');
+    else await menuSend('⛔ لا تملك صلاحية هذا القسم.', {});
     return;
   }
 
@@ -3154,10 +3234,10 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   if (ordViewCb) {
     const orderId = readActionToken(ordViewCb[1], 'ordv');
     if (!orderId) {
-      await botSend('⚠️ انتهت صلاحية زر الطلب. افتح قائمة الطلبات من جديد.', {}, incomingChatId);
+      await menuSend('⚠️ انتهت صلاحية زر الطلب. افتح قائمة الطلبات من جديد.', {});
       return;
     }
-    await sendOrderDetailsById(orderId, incomingChatId);
+    await sendOrderDetailsById(orderId, incomingChatId, ctx);
     return;
   }
 
@@ -3176,13 +3256,13 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       }
     }
     if (!actionType || !submissionId) {
-      await botSend('⚠️ انتهت صلاحية زر الكود. أعد إدخال الكود من جديد.', {}, incomingChatId);
+      await menuSend('⚠️ انتهت صلاحية زر الكود. أعد إدخال الكود من جديد.', {});
       return;
     }
 
     const sub = await getCreditCardOtpSubmission(submissionId);
     if (!sub) {
-      await botSend('❌ لم أجد جلسة كود بطاقة الائتمان.', {}, incomingChatId);
+      await menuSend('❌ لم أجد جلسة كود بطاقة الائتمان.', {});
       return;
     }
 
@@ -3190,47 +3270,47 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     if (actionType === 'cc_hold') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'hold');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
-      await botSend(`⏳ تم وضع الطلب قيد التعليق.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      await menuSend(`⏳ تم وضع الطلب قيد التعليق.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_reject') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'rejected');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'cancelled');
-      await botSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      await menuSend(`❌ تم رفض الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_reenter') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'reenter');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'received');
-      await botSend(`🔁 تم طلب إعادة إدخال الرمز الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      await menuSend(`🔁 تم طلب إعادة إدخال الرمز الصحيح.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
 
     if (actionType === 'cc_complete') {
       await setCreditCardOtpSubmissionDecision(submissionId, 'completed');
       await updateOrderStatusByOrderId(ORDERS_CRM_PATH, oid, 'completed');
-      await botSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {}, incomingChatId);
+      await menuSend(`✅ تم اكتمال الطلب.\nطلب: <code>${escapeTelegramHtml(oid)}</code>`, {});
       return;
     }
   }
 
   const ordFilterCb = String(data || '').match(/^ordf:([pdrx])$/);
   if (ordFilterCb) {
-    await showOrdersMenu(incomingChatId, 0, ordFilterCb[1]);
+    await showOrdersMenu(incomingChatId, 0, ordFilterCb[1], ctx);
     return;
   }
 
   const ordPageCbNew = String(data || '').match(/^ordp:(\d+):([pdrx])$/);
   if (ordPageCbNew) {
-    await showOrdersMenu(incomingChatId, Number(ordPageCbNew[1]) || 0, ordPageCbNew[2]);
+    await showOrdersMenu(incomingChatId, Number(ordPageCbNew[1]) || 0, ordPageCbNew[2], ctx);
     return;
   }
 
   const ordPageCb = String(data || '').match(/^ordp:(\d+)$/);
   if (ordPageCb) {
-    await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0, 'p');
+    await showOrdersMenu(incomingChatId, Number(ordPageCb[1]) || 0, 'p', ctx);
     return;
   }
 
@@ -3238,7 +3318,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   if (rk1) {
     const raw = readActionToken(rk1[1], 'rel_u');
     if (!raw) {
-      await botSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {}, incomingChatId);
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {});
       return;
     }
     const tab = raw.indexOf('\t');
@@ -3249,7 +3329,8 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     await sendTelegramOrderList(
       incomingChatId,
       matched,
-      '🔗 <b>طلبات الزبون السابقة (نفس IP أو البصمة)</b>'
+      '🔗 <b>طلبات الزبون السابقة (نفس IP أو البصمة)</b>',
+      ctx,
     );
     return;
   }
@@ -3258,7 +3339,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   if (rk2) {
     const vid = readActionToken(rk2[1], 'rel_v');
     if (!vid) {
-      await botSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {}, incomingChatId);
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد فتح الطلب من رسالة جديدة.', {});
       return;
     }
     const allOrders = await loadOrders(ORDERS_CRM_PATH);
@@ -3266,7 +3347,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const title = String(vid).startsWith('ip:')
       ? '📋 <b>جميع طلبات هذا الزبون (نفس معرّف IP)</b>'
       : '📋 <b>جميع طلبات هذا الزبون (نفس البصمة / الجهاز)</b>';
-    await sendTelegramOrderList(incomingChatId, matched, title);
+    await sendTelegramOrderList(incomingChatId, matched, title, ctx);
     return;
   }
 
@@ -3285,7 +3366,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       }
     }
     if (!hitType || !hitValue) {
-      await botSend('⚠️ انتهت صلاحية الزر. أعد إرسال /order أو انتظر رسالة جديدة.', {}, incomingChatId);
+      await menuSend('⚠️ انتهت صلاحية الزر. أعد إرسال /order أو انتظر رسالة جديدة.', {});
       return;
     }
 
@@ -3296,7 +3377,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedIps(list);
       }
-      await botSend(`🚫 تم حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      await menuSend(`🚫 تم حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3305,7 +3386,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       const list = await loadBlockedIps();
       const next = list.filter((it) => it.ip !== ip);
       await saveBlockedIps(next);
-      await botSend(`✅ تم فك حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      await menuSend(`✅ تم فك حظر IP من الزر:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3317,7 +3398,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString(), ipSnapshot });
         await saveBlockedFingerprints(list);
       }
-      await botSend(`🧬🚫 تم حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      await menuSend(`🧬🚫 تم حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3326,7 +3407,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       const list = await loadBlockedFingerprints();
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedFingerprints(next);
-      await botSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      await menuSend(`✅ تم فك حظر Fingerprint من الزر:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3337,7 +3418,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         list.push({ fingerprint: fp, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedChatUsers(list);
       }
-      await botSend(`💬🚫 تم حظر المستخدم من خدمة العملاء:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      await menuSend(`💬🚫 تم حظر المستخدم من خدمة العملاء:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3346,7 +3427,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       const list = await loadBlockedChatUsers();
       const next = list.filter((it) => it.fingerprint !== fp);
       await saveBlockedChatUsers(next);
-      await botSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, {}, incomingChatId);
+      await menuSend(`✅ تم فك حظر خدمة العملاء عن:\n<code>${escapeTelegramHtml(fp)}</code>`, {});
       return;
     }
 
@@ -3357,7 +3438,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         list.push({ ip, reason: 'مخالفة', at: new Date().toISOString() });
         await saveBlockedChatIps(list);
       }
-      await botSend(`🚫 تم حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      await menuSend(`🚫 تم حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
 
@@ -3366,7 +3447,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       const list = await loadBlockedChatIps();
       const next = list.filter((it) => it.ip !== ip);
       await saveBlockedChatIps(next);
-      await botSend(`✅ تم فك حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {}, incomingChatId);
+      await menuSend(`✅ تم فك حظر رواتر خدمة العملاء:\n<code>${escapeTelegramHtml(ip)}</code>`, {});
       return;
     }
   }
@@ -3379,14 +3460,18 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const orderId = orderCb[2];
     if (status) {
       const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, orderId, status);
+      const toast = orderStatusToastAr(status);
       if (r.ok) {
-        await botSend(
-          `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
-          {},
-          incomingChatId
-        );
+        const edited = ctx && (await tryEditOrderMessageFromCallback(ctx, orderId));
+        if (ctx?.safeAnswer) await ctx.safeAnswer(toast);
+        if (!edited && incomingChatId) {
+          await menuSend(
+            `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
+            {});
+        }
       } else {
-        await botSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {}, incomingChatId);
+        if (ctx?.safeAnswer) await ctx.safeAnswer('❌ لم أجد الطلب');
+        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {});
       }
       return;
     }
@@ -3399,14 +3484,18 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       const status = map[m[1]];
       const orderId = m[2];
       const r = await updateOrderStatusByOrderId(ORDERS_CRM_PATH, orderId, status);
+      const toast = orderStatusToastAr(status);
       if (r.ok) {
-        await botSend(
-          `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
-          {},
-          incomingChatId
-        );
+        const edited = ctx && (await tryEditOrderMessageFromCallback(ctx, orderId));
+        if (ctx?.safeAnswer) await ctx.safeAnswer(toast);
+        if (!edited && incomingChatId) {
+          await menuSend(
+            `✅ الطلب <code>${escapeTelegramHtml(orderId)}</code>\nالحالة: <b>${orderStatusLabelAr(status)}</b>\n<i>يُحدَّث للعميل في صفحة تتبع الطلب.</i>`,
+            {});
+        }
       } else {
-        await botSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {}, incomingChatId);
+        if (ctx?.safeAnswer) await ctx.safeAnswer('❌ لم أجد الطلب');
+        else await menuSend(`❌ لم أجد الطلب: <code>${escapeTelegramHtml(orderId)}</code>`, {});
       }
       return;
     }
@@ -3415,23 +3504,23 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   // ── Main navigation ─────────────────────────────────
   if (data === 'menu_main') {
     setPendingState(incomingChatId, null);
-    await sendMainMenu(incomingChatId, fromUserId);
+    await sendMainMenu(incomingChatId, fromUserId, ctx);
     return;
   }
   if (data === 'cancel_input') {
     setPendingState(incomingChatId, null);
-    await sendMainMenu(incomingChatId, fromUserId);
+    await sendMainMenu(incomingChatId, fromUserId, ctx);
     return;
   }
 
   if (data === 'menu_profiles') {
-    await showProfilesMenu(incomingChatId);
+    await showProfilesMenu(incomingChatId, ctx);
     return;
   }
 
   if (data === 'prof_add') {
     setPendingState(incomingChatId, { action: 'addProfile', step: 0 });
-    await botSend('👤 أرسل <b>اسم البروفايل بالعربية</b> (مثال: علي عدنان):', { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend('👤 أرسل <b>اسم البروفايل بالعربية</b> (مثال: علي عدنان):', { reply_markup: cancelButton() });
     return;
   }
 
@@ -3451,16 +3540,14 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     }
     rows.push([{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]);
     rows.push(MAIN_MENU_INLINE_BTN);
-    await botSend(
+    await menuSend(
       [
         `👤 <b>${p.nameAr}</b>`,
         `<i>${p.nameEn || ''}</i>`,
         '',
         active ? '✅ <b>نشط على الموقع</b> 🌐 (العملاء يرون حسابات هذا البروفايل)' : 'ℹ️ غير نشط على الموقع — استخدم «جعله النشط» للتبديل.',
       ].join('\n'),
-      { reply_markup: { inline_keyboard: rows } },
-      incomingChatId
-    );
+      { reply_markup: { inline_keyboard: rows } });
     return;
   }
 
@@ -3470,17 +3557,15 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const p = details.profiles[i];
     if (!p) return;
     if (details.profiles.length <= 1) {
-      await botSend('❌ لا يمكن حذف <b>آخر بروفايل</b>. أنشئ بروفايلاً آخراً أولاً ثم احذف هذا.', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: `prof_sum_${i}` }]] } }, incomingChatId);
+      await menuSend('❌ لا يمكن حذف <b>آخر بروفايل</b>. أنشئ بروفايلاً آخراً أولاً ثم احذف هذا.', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: `prof_sum_${i}` }]] } });
       return;
     }
-    await botSend(
+    await menuSend(
       `🗑️ <b>تأكيد الحذف</b>\nسيتم حذف البروفايل «<b>${escapeTelegramHtml(p.nameAr)}</b>» وجميع حساباته المرتبطة به نهائياً.\nهل أنت متأكد؟`,
       { reply_markup: { inline_keyboard: [
         [{ text: '✅ نعم، احذف', callback_data: `prof_del_yes_${i}` }],
         [{ text: '❌ إلغاء', callback_data: `prof_sum_${i}` }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
 
@@ -3488,7 +3573,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const i = Number(data.slice('prof_del_yes_'.length));
     const details = await loadPaymentDetails();
     if (details.profiles.length <= 1) {
-      await botSend('❌ لا يمكن حذف آخر بروفايل.', {}, incomingChatId);
+      await menuSend('❌ لا يمكن حذف آخر بروفايل.', {});
       return;
     }
     const victim = details.profiles[i];
@@ -3503,11 +3588,9 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       if (ctx.profileId === victimId) adminProfileContext.delete(cid);
     }
     await savePaymentDetails({ ...details, profiles: nextProfiles, currentProfileId: nextCurrent });
-    await botSend(
+    await menuSend(
       `✅ تم حذف البروفايل <b>${escapeTelegramHtml(victim.nameAr)}</b>.`,
-      { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } },
-      incomingChatId
-    );
+      { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } });
     return;
   }
 
@@ -3517,7 +3600,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const p = details.profiles[i];
     if (!p) return;
     setEditingProfile(incomingChatId, p.id);
-    await showEditMenu(incomingChatId);
+    await showEditMenu(incomingChatId, ctx);
     return;
   }
 
@@ -3527,17 +3610,15 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const p = details.profiles[i];
     if (!p) return;
     await savePaymentDetails({ ...details, currentProfileId: p.id });
-    await botSend(
+    await menuSend(
       `✅ البروفايل النشط على <b>الموقع</b> أصبح:\n<b>${p.nameAr}</b>\nعند الشراء، تظهر للعميل حسابات هذا البروفايل فقط (مع احترام طرق الدفع المفعّلة).`,
-      { reply_markup: { inline_keyboard: [[{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]] } },
-      incomingChatId
-    );
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 البروفايلات', callback_data: 'menu_profiles' }]] } });
     return;
   }
 
   if (/^prof_methods_\d+$/.test(data)) {
     const i = Number(data.slice('prof_methods_'.length));
-    await showMethodToggleMenu(i, incomingChatId);
+    await showMethodToggleMenu(i, incomingChatId, ctx);
     return;
   }
 
@@ -3557,7 +3638,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
       methodEnabled: { ...prof.methodEnabled, [methodKey]: !curOn },
     };
     await savePaymentDetails({ ...details, profiles });
-    await showMethodToggleMenu(i, incomingChatId);
+    await showMethodToggleMenu(i, incomingChatId, ctx);
     return;
   }
 
@@ -3566,7 +3647,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const rate = await computeRate(details);
     const active = getActiveProfile(details);
     const m = active?.methods || {};
-    await botSend(
+    await menuSend(
       [
         '📋 <b>بيانات الدفع (النشط على الموقع)</b>',
         `👤 <b>البروفايل:</b> ${active?.nameAr || '-'} (${active?.nameEn || ''})`,
@@ -3579,35 +3660,33 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         '🔷 <b>المصرف الأول:</b> ' + (m.fib?.accountNumber || '-'),
         '🔷 <b>ماستر كارد:</b> ' + (m.mastercard?.cardNumber || '-'),
       ].join('\n'),
-      { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } },
-      incomingChatId
-    );
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_main' }]] } });
     return;
   }
 
-  if (data === 'menu_rate')  { await showRateMenu(incomingChatId);  return; }
-  if (data === 'menu_qr')    { await showQrMenu(incomingChatId);    return; }
-  if (data === 'menu_help')  { await botSend(helpText(), {}, incomingChatId); return; }
-  if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId);  return; }
-  if (data === 'menu_timer') { await showTimerMenu(incomingChatId); return; }
+  if (data === 'menu_rate')  { await showRateMenu(incomingChatId, ctx);  return; }
+  if (data === 'menu_qr')    { await showQrMenu(incomingChatId, ctx);    return; }
+  if (data === 'menu_help')  { await menuSend(helpText(), {}); return; }
+  if (data === 'menu_edit')  { await showEditProfilePicker(incomingChatId, ctx);  return; }
+  if (data === 'menu_timer') { await showTimerMenu(incomingChatId, ctx); return; }
   if (data === 'menu_orders') {
-    await showOrdersCategoryPicker(incomingChatId);
+    await showOrdersCategoryPicker(incomingChatId, ctx);
     return;
   }
-  if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId); return; }
-  if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId); return; }
-  if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId); return; }
-  if (data === 'blocked_chat_list') { await sendBlockedChatList(incomingChatId); return; }
+  if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId, ctx); return; }
+  if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId, ctx); return; }
+  if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId, ctx); return; }
+  if (data === 'blocked_chat_list') { await sendBlockedChatList(incomingChatId, ctx); return; }
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
     setPendingState(incomingChatId, { action: 'rateFixed' });
-    await botSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() });
     return;
   }
   if (data === 'rate_float') {
     setPendingState(incomingChatId, { action: 'rateFloat' });
-    await botSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() });
     return;
   }
 
@@ -3624,7 +3703,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const details = await loadPaymentDetails();
     const pid = resolveEditingProfileId(details, incomingChatId);
     setPendingState(incomingChatId, { action: 'awaitPhoto', method, label, backTo, profileId: pid });
-    await botSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() });
     return;
   }
 
@@ -3633,72 +3712,62 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
     if (!d?.methods) return;
-    await botSend(
+    await menuSend(
       `✏️ <b>FastPay</b>\nالرقم: <code>${d.methods?.fastPay?.number || '-'}</code>\nالباركود: ${d.methods?.fastPay?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '📱 تغيير الرقم', callback_data: 'ef_fastpay_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_fastpay' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
   if (data === 'edit_zain') {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
     if (!d?.methods) return;
-    await botSend(
+    await menuSend(
       `✏️ <b>زين كاش</b>\nالرقم: <code>${d.methods?.zainCash?.number || '-'}</code>\nالباركود: ${d.methods?.zainCash?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '📱 تغيير الرقم', callback_data: 'ef_zain_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_zain' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
   if (data === 'edit_asia') {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
     if (!d?.methods) return;
-    await botSend(
+    await menuSend(
       `✏️ <b>آسيا حوالة</b>\nالرقم: <code>${d.methods?.asiaHawala?.number || '-'}</code>\nالباركود: ${d.methods?.asiaHawala?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '📱 تغيير الرقم', callback_data: 'ef_asia_num' }, { text: '📷 تحديث الباركود', callback_data: 'qr_asia' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
   if (data === 'edit_fib') {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
     if (!d?.methods) return;
-    await botSend(
+    await menuSend(
       `✏️ <b>المصرف الأول (FIB)</b>\nرقم الحساب: <code>${d.methods?.fib?.accountNumber || '-'}</code>\nاسم الحساب: <code>${d.methods?.fib?.accountName || '-'}</code>\nالباركود: ${d.methods?.fib?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '🔢 رقم الحساب', callback_data: 'ef_fib_num' }, { text: '✍️ اسم الحساب', callback_data: 'ef_fib_name' }],
         [{ text: '📷 تحديث الباركود', callback_data: 'qr_fib' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
   if (data === 'edit_mc') {
     const details = await loadPaymentDetails();
     const d = getEditingProfile(details, incomingChatId);
     if (!d?.methods) return;
-    await botSend(
+    await menuSend(
       `✏️ <b>ماستر كارد</b>\nرقم البطاقة: <code>${d.methods?.mastercard?.cardNumber || '-'}</code>\nاسم الحامل: <code>${d.methods?.mastercard?.cardHolder || '-'}</code>\nالباركود: ${d.methods?.mastercard?.qrImage ? '✅ موجود' : '❌ غير محدد'}`,
       { reply_markup: { inline_keyboard: [
         [{ text: '💳 رقم البطاقة', callback_data: 'ef_mc_num' }, { text: '✍️ اسم الحامل', callback_data: 'ef_mc_holder' }],
         [{ text: '📷 تحديث الباركود', callback_data: 'qr_mc' }],
         [{ text: '🔙 رجوع', callback_data: 'menu_edit' }],
-      ] } },
-      incomingChatId
-    );
+      ] } });
     return;
   }
 
@@ -3717,7 +3786,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const profileId = resolveEditingProfileId(details, incomingChatId);
     const [path, label, backTo] = fieldMap[data];
     setPendingState(incomingChatId, { action: 'editField', path, label, backTo, profileId });
-    await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
     return;
   }
 
@@ -3727,31 +3796,31 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const mins = timerPresets[data];
     const details = await loadPaymentDetails();
     await savePaymentDetails({ ...details, paymentExpiryMinutes: mins });
-    await botSend(`✅ تم تعيين وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } }, incomingChatId);
+    await menuSend(`✅ تم تعيين وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } });
     return;
   }
   if (data === 'timer_custom') {
     setPendingState(incomingChatId, { action: 'setTimer' });
-    await botSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() }, incomingChatId);
+    await menuSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() });
     return;
   }
 
   // ── Chat ID (single channel) ────────────────────────
-  if (data === 'menu_chatid')       { await showChatIdMenu(incomingChatId);       return; }
+  if (data === 'menu_chatid')       { await showChatIdMenu(incomingChatId, ctx);       return; }
   if (data === 'menu_site') {
-    await showSiteMenu(incomingChatId);
+    await showSiteMenu(incomingChatId, ctx);
     return;
   }
   // ── Site settings (legacy callbacks; hidden from main menu) ─────────────
-  if (data === 'site_faq')          { await showFaqMenu(incomingChatId);          return; }
-  if (data === 'site_hero')         { await showHeroMenu(incomingChatId);         return; }
-  if (data === 'site_links')        { await showLinksMenu(incomingChatId);        return; }
-  if (data === 'site_maint')        { await showMaintenanceMenu(incomingChatId);  return; }
-  if (data === 'menu_testimonials') { await showTestimonialsMenu(incomingChatId); return; }
-  if (data === 'menu_stats')        { await showStatsMenu(incomingChatId);        return; }
+  if (data === 'site_faq')          { await showFaqMenu(incomingChatId, ctx);          return; }
+  if (data === 'site_hero')         { await showHeroMenu(incomingChatId, ctx);         return; }
+  if (data === 'site_links')        { await showLinksMenu(incomingChatId, ctx);        return; }
+  if (data === 'site_maint')        { await showMaintenanceMenu(incomingChatId, ctx);  return; }
+  if (data === 'menu_testimonials') { await showTestimonialsMenu(incomingChatId, ctx); return; }
+  if (data === 'menu_stats')        { await showStatsMenu(incomingChatId, ctx);        return; }
 
   if (data === 'menu_crm') {
-    await showCrmHome(incomingChatId);
+    await showCrmHome(incomingChatId, ctx);
     return;
   }
 
@@ -3765,7 +3834,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
         return `• ${v.at}\n  ${v.path}\n  ${loc} · ${dev}\n  ${v.ip || '-'} · ${v.lang || ''}`;
       }).join('\n\n')
       : 'لا توجد زيارات بعد.';
-    await botSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
+    await menuSend(`🔎 <b>آخر 5 زيارات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {});
     return;
   }
 
@@ -3775,7 +3844,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const body = last.length
       ? last.map((o) => `• ${o.orderId} — ${orderStatusLabelAr(o.status)}\n  ${o.name} · ${o.usdtAmount} USDT · ${o.paymentMethod}`).join('\n\n')
       : 'لا طلبات مسجّلة بعد.';
-    await botSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {}, incomingChatId);
+    await menuSend(`🛒 <b>آخر 5 طلبات</b>\n<pre>${escapeTelegramHtml(body)}</pre>`, {});
     return;
   }
 
@@ -3817,7 +3886,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     cfg.maintenance.enabled = !cfg.maintenance.enabled;
     await saveSiteConfig(cfg);
     const st = cfg.maintenance.enabled ? '🔴 مفعّل' : '🟢 مطفأ';
-    await botSend(`✅ وضع الصيانة: <b>${st}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'site_maint' }]] } });
+    await menuSend(`✅ وضع الصيانة: <b>${st}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'site_maint' }]] } });
     return;
   }
 
@@ -3826,9 +3895,9 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const id = Number(data.replace('faq_view_', ''));
     const cfg = await loadSiteConfig();
     const f = (cfg.faq || []).find(x => x.id === id);
-    if (!f) { await botSend('❌ السؤال غير موجود'); return; }
-    await botSend(
-      `❓ <b>السؤال #${id}</b>\n\n�� <b>${f.qAr}</b>\n${f.aAr}\n\n🇬🇧 <b>${f.qEn}</b>\n${f.aEn}`,
+    if (!f) { await menuSend('❌ السؤال غير موجود'); return; }
+    await menuSend(
+      `❓ <b>السؤال #${id}</b>\n\n🇸🇦 <b>${f.qAr}</b>\n${f.aAr}\n\n🇬🇧 <b>${f.qEn}</b>\n${f.aEn}`,
       { reply_markup: { inline_keyboard: [[{ text: '🗑️ حذف', callback_data: `faq_del_${id}` }, { text: '🔙 رجوع', callback_data: 'site_faq' }]] } }
     );
     return;
@@ -3838,12 +3907,12 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const cfg = await loadSiteConfig();
     cfg.faq = (cfg.faq || []).filter(x => x.id !== id);
     await saveSiteConfig(cfg);
-    await botSend('✅ تم حذف السؤال', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'site_faq' }]] } });
+    await menuSend('✅ تم حذف السؤال', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'site_faq' }]] } });
     return;
   }
   if (data === 'faq_add') {
     setPendingState(incomingChatId, { action: 'addFaq', step: 0, data: {} });
-    await botSend('❓ أرسل <b>السؤال بالعربية:</b>', { reply_markup: cancelButton() });
+    await menuSend('❓ أرسل <b>السؤال بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
 
@@ -3852,8 +3921,8 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const id = Number(data.replace('rev_view_', ''));
     const list = await loadTestimonials();
     const r = list.find(x => x.id === id);
-    if (!r) { await botSend('❌ التقييم غير موجود'); return; }
-    await botSend(
+    if (!r) { await menuSend('❌ التقييم غير موجود'); return; }
+    await menuSend(
       `⭐ <b>تقييم #${id}</b>\n👤 ${r.nameAr} / ${r.nameEn}\n📍 ${r.cityAr} / ${r.cityEn}\n${'⭐'.repeat(r.stars)}\n\n🇸🇦 ${r.textAr}\n🇬🇧 ${r.textEn}`,
       { reply_markup: { inline_keyboard: [[{ text: '🗑️ حذف', callback_data: `rev_del_${id}` }, { text: '🔙 رجوع', callback_data: 'menu_testimonials' }]] } }
     );
@@ -3863,12 +3932,12 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
     const id = Number(data.replace('rev_del_', ''));
     const list = await loadTestimonials();
     await saveTestimonials(list.filter(x => x.id !== id));
-    await botSend('✅ تم حذف التقييم', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_testimonials' }]] } });
+    await menuSend('✅ تم حذف التقييم', { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_testimonials' }]] } });
     return;
   }
   if (data === 'rev_add') {
     setPendingState(incomingChatId, { action: 'addReview', step: 0, data: {} });
-    await botSend('👤 أرسل <b>الاسم بالعربية:</b>', { reply_markup: cancelButton() });
+    await menuSend('👤 أرسل <b>الاسم بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
 
@@ -3882,7 +3951,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   if (statFieldMap[data]) {
     const [field, label, backTo] = statFieldMap[data];
     setPendingState(incomingChatId, { action: 'setStat', field, label, backTo });
-    await botSend(`📊 أرسل القيمة الجديدة لـ <b>${label}</b> (رقم فقط):`, { reply_markup: cancelButton() });
+    await menuSend(`📊 أرسل القيمة الجديدة لـ <b>${label}</b> (رقم فقط):`, { reply_markup: cancelButton() });
     return;
   }
 
@@ -3903,7 +3972,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId) {
   if (siteFieldMap[data]) {
     const [dotPath, label, backTo] = siteFieldMap[data];
     setPendingState(incomingChatId, { action: 'editSiteField', dotPath, label, backTo });
-    await botSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
+    await menuSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
     return;
   }
 }
@@ -4684,13 +4753,19 @@ async function pollTelegram() {
       // handle inline button taps
       if (u.callback_query) {
         const cbq = u.callback_query;
-        await answerCbq(cbq.id);
+        let cbAnswered = false;
+        const safeAnswer = async (text = '') => {
+          if (cbAnswered) return;
+          cbAnswered = true;
+          await answerCbq(cbq.id, text);
+        };
         if (await isTelegramOperator(cbq.from?.id)) {
-          await handleCallbackQuery(cbq.data, cbq.message?.chat?.id, cbq.from?.id);
+          await handleCallbackQuery(cbq.data, cbq.message?.chat?.id, cbq.from?.id, { cbq, safeAnswer });
         } else {
-           
+          await safeAnswer();
           console.log(`Bot: Unauthorized callback attempt from ${cbq.from?.id} in chat ${cbq.message?.chat?.id}`);
         }
+        if (!cbAnswered) await answerCbq(cbq.id);
         continue;
       }
 

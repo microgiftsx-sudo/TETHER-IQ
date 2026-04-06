@@ -135,6 +135,11 @@ export async function tgAnswerCallbackQuery(botToken, callbackQueryId, text = ''
   });
 }
 
+/** تحديث رسالة نصية (أزرار inline) */
+export async function tgEditMessageText(botToken, payload) {
+  return tgPostJson(botToken, 'editMessageText', payload);
+}
+
 /** Escape for Telegram HTML parse_mode */
 export function escapeTelegramHtml(s) {
   return String(s ?? '')
