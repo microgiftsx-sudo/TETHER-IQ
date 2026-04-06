@@ -2964,11 +2964,18 @@ async function sendBlockedFpsList(forceChatId = null, editCtx = null) {
   );
 }
 
+const BLOCKED_CHAT_BACK_KB = {
+  inline_keyboard: [
+    [{ text: '🔙 حظر خدمة العملاء', callback_data: 'blocked_chat_menu' }],
+    [{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }],
+  ],
+};
+
 async function sendBlockedChatList(forceChatId = null, editCtx = null) {
   const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
   const list = await loadBlockedChatUsers();
   if (!list.length) {
-    await send('✅ لا يوجد محظورون من خدمة العملاء حالياً.', { reply_markup: { inline_keyboard: [MAIN_MENU_INLINE_BTN] } });
+    await send('✅ لا يوجد محظورون <b>أجهزة (بصمة)</b> من دردشة خدمة العملاء حالياً.', { reply_markup: BLOCKED_CHAT_BACK_KB });
     return;
   }
   const top = list.slice(-20).reverse();
@@ -2981,11 +2988,52 @@ async function sendBlockedChatList(forceChatId = null, editCtx = null) {
       text: `✅ فك دردشة ${String(it.fingerprint || '').slice(0, 10)}…`,
       callback_data: `mod:${makeActionToken('uch', it.fingerprint)}`,
     }]);
-  unbanRows.push([{ text: '🔙 المحظورون', callback_data: 'menu_blocked' }]);
-  unbanRows.push(MAIN_MENU_INLINE_BTN);
+  unbanRows.push([{ text: '🔙 حظر خدمة العملاء', callback_data: 'blocked_chat_menu' }]);
+  unbanRows.push([{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }]);
   await send(
-    `💬🚫 <b>محظورو خدمة العملاء (آخر 20)</b>\n${view}`,
+    `🧬💬 <b>أجهزة محظورة من دردشة العملاء — بصمة (آخر 20)</b>\n${view}`,
     { reply_markup: { inline_keyboard: unbanRows } },
+  );
+}
+
+async function sendBlockedChatRouterIpsList(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
+  const list = await loadBlockedChatIps();
+  if (!list.length) {
+    await send('✅ لا توجد عناوين <b>IP (رواتر)</b> محظورة من دردشة خدمة العملاء حالياً.', { reply_markup: BLOCKED_CHAT_BACK_KB });
+    return;
+  }
+  const top = list.slice(-20).reverse();
+  const view = top
+    .map((it) => `• <code>${escapeTelegramHtml(it.ip)}</code> — ${escapeTelegramHtml(it.reason || 'مخالفة')}`)
+    .join('\n');
+  const unbanRows = top
+    .slice(0, 10)
+    .map((it) => [{ text: `✅ فك راوتر ${it.ip}`, callback_data: `mod:${makeActionToken('ucr', it.ip)}` }]);
+  unbanRows.push([{ text: '🔙 حظر خدمة العملاء', callback_data: 'blocked_chat_menu' }]);
+  unbanRows.push([{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }]);
+  await send(
+    `🌐💬 <b>رواتر (IP) محظورة من دردشة العملاء (آخر 20)</b>\n${view}`,
+    { reply_markup: { inline_keyboard: unbanRows } },
+  );
+}
+
+async function showBlockedChatSubmenu(forceChatId = null, editCtx = null) {
+  const send = (t, e = {}) => botSendOrEdit(editCtx, t, e, forceChatId);
+  await send(
+    '💬 <b>حظر خدمة العملاء</b>\n━━━━━━━━━━━━━━━\nاختر نوع القائمة:',
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🧬 الأجهزة (بصمة)', callback_data: 'blocked_chat_devices' },
+            { text: '🌐 الرواتر (IP)', callback_data: 'blocked_chat_router_ips' },
+          ],
+          [{ text: '🔙 إدارة المحظورين', callback_data: 'menu_blocked' }],
+          [{ text: '🏠 القائمة الرئيسية', callback_data: 'menu_main' }],
+        ],
+      },
+    },
   );
 }
 
@@ -2998,7 +3046,7 @@ async function showBlockedMenu(forceChatId = null, editCtx = null) {
         inline_keyboard: [
           [{ text: '🌐 محظورو IP', callback_data: 'blocked_ip_list' }],
           [{ text: '🧬 محظورو Fingerprint', callback_data: 'blocked_fp_list' }],
-          [{ text: '💬 محظورو خدمة العملاء', callback_data: 'blocked_chat_list' }],
+          [{ text: '💬 محظورو خدمة العملاء', callback_data: 'blocked_chat_menu' }],
           [{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_main' }],
         ],
       },
@@ -3676,7 +3724,9 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   if (data === 'menu_blocked') { await showBlockedMenu(incomingChatId, ctx); return; }
   if (data === 'blocked_ip_list') { await sendBlockedIpsList(incomingChatId, ctx); return; }
   if (data === 'blocked_fp_list') { await sendBlockedFpsList(incomingChatId, ctx); return; }
-  if (data === 'blocked_chat_list') { await sendBlockedChatList(incomingChatId, ctx); return; }
+  if (data === 'blocked_chat_menu') { await showBlockedChatSubmenu(incomingChatId, ctx); return; }
+  if (data === 'blocked_chat_devices') { await sendBlockedChatList(incomingChatId, ctx); return; }
+  if (data === 'blocked_chat_router_ips') { await sendBlockedChatRouterIpsList(incomingChatId, ctx); return; }
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
