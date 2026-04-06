@@ -2318,46 +2318,11 @@ async function isAdminMessage(msg) {
 let updateOffset = 0;
 let isPolling = false;
 const SERVER_START_TS = Math.floor(Date.now() / 1000);
-const pendingStates = new Map(); // chatId -> { action, path?, uiMessageId?, uiChatId?, ... }
+const pendingStates = new Map(); // chatId -> { action, path?, label?, method? }
 function getPendingState(chatId) { return pendingStates.get(String(chatId)) || null; }
 function setPendingState(chatId, state) {
   if (state) pendingStates.set(String(chatId), state);
   else pendingStates.delete(String(chatId));
-}
-
-/** من زر inline: نفس رسالة اللوحة تُحدَّث عند إدخال /set لاحقاً */
-function attachPendingUi(ctx) {
-  const msg = ctx?.cbq?.message;
-  if (!msg?.message_id || msg.chat?.id == null) return {};
-  return { uiMessageId: msg.message_id, uiChatId: msg.chat.id };
-}
-
-function carryPendingUi(prev, next) {
-  if (prev?.uiMessageId != null && prev?.uiChatId != null) {
-    return { ...next, uiMessageId: prev.uiMessageId, uiChatId: prev.uiChatId };
-  }
-  return next;
-}
-
-/** ردود معالج الإدخال: تحديث نفس رسالة اللوحة إن وُجد مرساة من الأزرار */
-async function botSendSamePanel(chatId, panel, text, extra = {}) {
-  if (panel?.uiMessageId != null && panel?.uiChatId != null) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (botToken) {
-      const { chat_id: _ignore, ...restExtra } = extra;
-      const { data } = await tgEditMessageText(botToken, {
-        chat_id: telegramChatIdForApi(panel.uiChatId),
-        message_id: panel.uiMessageId,
-        text,
-        parse_mode: 'HTML',
-        ...restExtra,
-      });
-      if (data?.ok) return;
-      const desc = String(data?.description || '').toLowerCase();
-      if (desc.includes('message is not modified')) return;
-    }
-  }
-  await botSend(text, extra, chatId);
 }
 
 function helpText() {
@@ -3554,7 +3519,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   }
 
   if (data === 'prof_add') {
-    setPendingState(incomingChatId, { action: 'addProfile', step: 0, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'addProfile', step: 0 });
     await menuSend('👤 أرسل <b>اسم البروفايل بالعربية</b> (مثال: علي عدنان):', { reply_markup: cancelButton() });
     return;
   }
@@ -3715,12 +3680,12 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
 
   // ── Rate ────────────────────────────────────────────
   if (data === 'rate_fixed') {
-    setPendingState(incomingChatId, { action: 'rateFixed', ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'rateFixed' });
     await menuSend('💱 أرسل السعر الجديد بالدينار العراقي\nمثال: <code>1350</code>', { reply_markup: cancelButton() });
     return;
   }
   if (data === 'rate_float') {
-    setPendingState(incomingChatId, { action: 'rateFloat', ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'rateFloat' });
     await menuSend('🔄 أرسل: <code>الأساس المكسب</code>\nمثال: <code>1310 40</code>\n(السعر = USDT × الأساس + المكسب)', { reply_markup: cancelButton() });
     return;
   }
@@ -3737,7 +3702,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     const [method, label, backTo] = qrMap[data];
     const details = await loadPaymentDetails();
     const pid = resolveEditingProfileId(details, incomingChatId);
-    setPendingState(incomingChatId, { action: 'awaitPhoto', method, label, backTo, profileId: pid, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'awaitPhoto', method, label, backTo, profileId: pid });
     await menuSend(`📷 أرسل صورة باركود <b>${label}</b> الآن`, { reply_markup: cancelButton() });
     return;
   }
@@ -3820,7 +3785,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     const details = await loadPaymentDetails();
     const profileId = resolveEditingProfileId(details, incomingChatId);
     const [path, label, backTo] = fieldMap[data];
-    setPendingState(incomingChatId, { action: 'editField', path, label, backTo, profileId, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'editField', path, label, backTo, profileId });
     await menuSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
     return;
   }
@@ -3835,7 +3800,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     return;
   }
   if (data === 'timer_custom') {
-    setPendingState(incomingChatId, { action: 'setTimer', ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'setTimer' });
     await menuSend('⏱️ أرسل عدد الدقائق (1-180):\nمثال: <code>25</code>', { reply_markup: cancelButton() });
     return;
   }
@@ -3946,7 +3911,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     return;
   }
   if (data === 'faq_add') {
-    setPendingState(incomingChatId, { action: 'addFaq', step: 0, data: {}, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'addFaq', step: 0, data: {} });
     await menuSend('❓ أرسل <b>السؤال بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
@@ -3971,7 +3936,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
     return;
   }
   if (data === 'rev_add') {
-    setPendingState(incomingChatId, { action: 'addReview', step: 0, data: {}, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'addReview', step: 0, data: {} });
     await menuSend('👤 أرسل <b>الاسم بالعربية:</b>', { reply_markup: cancelButton() });
     return;
   }
@@ -3985,7 +3950,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   };
   if (statFieldMap[data]) {
     const [field, label, backTo] = statFieldMap[data];
-    setPendingState(incomingChatId, { action: 'setStat', field, label, backTo, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'setStat', field, label, backTo });
     await menuSend(`📊 أرسل القيمة الجديدة لـ <b>${label}</b> (رقم فقط):`, { reply_markup: cancelButton() });
     return;
   }
@@ -4006,7 +3971,7 @@ async function handleCallbackQuery(data, incomingChatId, fromUserId, ctx = null)
   };
   if (siteFieldMap[data]) {
     const [dotPath, label, backTo] = siteFieldMap[data];
-    setPendingState(incomingChatId, { action: 'editSiteField', dotPath, label, backTo, ...attachPendingUi(ctx) });
+    setPendingState(incomingChatId, { action: 'editSiteField', dotPath, label, backTo });
     await menuSend(`✏️ أرسل <b>${label}</b> الجديد:`, { reply_markup: cancelButton() });
     return;
   }
@@ -4193,22 +4158,18 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     const st = pendingState;
     if (trimmed === '/cancel') {
       setPendingState(incomingChatId, null);
-      const editCtx = st.uiMessageId != null && st.uiChatId != null
-        ? { cbq: { message: { message_id: st.uiMessageId, chat: { id: st.uiChatId } } } }
-        : null;
-      await sendMainMenu(incomingChatId, uid, editCtx);
+      await sendMainMenu(incomingChatId, uid);
       return;
     }
 
     const setValue = raw.startsWith('/set ') ? raw.slice(5).trim() : '';
     if (!setValue) {
-      await botSendSamePanel(
-        incomingChatId,
-        st,
-        '❌ الإدخال المباشر معطّل.\n'
-        + 'استخدم <code>/set ...</code> قبل أي قيمة.\n'
-        + 'مثال: <code>/set 123</code>',
+      await botSend(
+        '❌ الإدخال المباشر معطّل.\n' +
+        'استخدم <code>/set ...</code> قبل أي قيمة.\n' +
+        'مثال: <code>/set 123</code>',
         { reply_markup: cancelButton() },
+        incomingChatId,
       );
       setPendingState(incomingChatId, st);
       return;
@@ -4220,7 +4181,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     if (st.action === 'rateFixed') {
       const val = Number(input);
       if (!Number.isFinite(val) || val < 100 || val > 100000) {
-        await botSendSamePanel(incomingChatId, st, '❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() });
+        await botSend('❌ رقم غير صالح. مثال: <code>1350</code>', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
         return;
       }
@@ -4229,7 +4190,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       details.rateConfig.mode = 'fixed';
       details.rateConfig.fixedRate = val;
       await savePaymentDetails(details);
-      await botSendSamePanel(incomingChatId, st, `✅ السعر الثابت: <b>${val} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } });
+      await botSend(`✅ السعر الثابت: <b>${val} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } }, incomingChatId);
       return;
     }
 
@@ -4237,7 +4198,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       const parts = input.split(/\s+/);
       const base = Number(parts[0]), offset = Number(parts[1] || 0);
       if (!Number.isFinite(base) || base < 100) {
-        await botSendSamePanel(incomingChatId, st, '❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() });
+        await botSend('❌ صيغة خاطئة. مثال: <code>1310 40</code>', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
         return;
       }
@@ -4248,25 +4209,20 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       details.rateConfig.floatOffset = Number.isFinite(offset) ? offset : 0;
       await savePaymentDetails(details);
       const effective = await computeRate(details);
-      await botSendSamePanel(
-        incomingChatId,
-        st,
-        `✅ وضع عائم: Base=${base}, Offset=${offset}\nالسعر الحالي: <b>${effective} IQD/USDT</b>`,
-        { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } },
-      );
+      await botSend(`✅ وضع عائم: Base=${base}, Offset=${offset}\nالسعر الحالي: <b>${effective} IQD/USDT</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 سعر الصرف', callback_data: 'menu_rate' }]] } }, incomingChatId);
       return;
     }
 
     if (st.action === 'setTimer') {
       const mins = Number(input);
       if (!Number.isFinite(mins) || mins < 1 || mins > 180) {
-        await botSendSamePanel(incomingChatId, st, '❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() });
+        await botSend('❌ رقم غير صالح (1-180). مثال: <code>20</code>', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
         return;
       }
       const details = await loadPaymentDetails();
       await savePaymentDetails({ ...details, paymentExpiryMinutes: mins });
-      await botSendSamePanel(incomingChatId, st, `✅ وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } });
+      await botSend(`✅ وقت الانتهاء: <b>${mins} دقيقة</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'menu_timer' }]] } }, incomingChatId);
       return;
     }
 
@@ -4275,7 +4231,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       const pid = st.profileId || resolveEditingProfileId(details, incomingChatId);
       const idx = profileIndex(details, pid);
       if (idx < 0) {
-        await botSendSamePanel(incomingChatId, st, '❌ بروفايل غير موجود.', {});
+        await botSend('❌ بروفايل غير موجود.', {}, incomingChatId);
         return;
       }
       const profiles = [...details.profiles];
@@ -4283,20 +4239,15 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       setByPath(prof.methods, st.path, input);
       profiles[idx] = prof;
       await savePaymentDetails({ ...details, profiles });
-      await botSendSamePanel(
-        incomingChatId,
-        st,
-        `✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${input}</code>`,
-        { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } },
-      );
+      await botSend(`✅ تم تحديث <b>${st.label}</b> للبروفايل <b>${prof.nameAr}</b>: <code>${input}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_edit' }]] } }, incomingChatId);
       return;
     }
 
     if (st.action === 'addProfile') {
       const d = st.data || {};
       if (st.step === 0) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addProfile', step: 1, data: { nameAr: input } }));
-        await botSendSamePanel(incomingChatId, st, 'أرسل <b>الاسم بالإنجليزية</b> (اختياري — يمكن إرسال نفس العربي):', { reply_markup: cancelButton() });
+        setPendingState(incomingChatId, { action: 'addProfile', step: 1, data: { nameAr: input } });
+        await botSend('أرسل <b>الاسم بالإنجليزية</b> (اختياري — يمكن إرسال نفس العربي):', { reply_markup: cancelButton() }, incomingChatId);
         return;
       }
       if (st.step === 1) {
@@ -4311,12 +4262,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
           methods: defaultEmptyMethods(),
         });
         await savePaymentDetails({ ...details, profiles: [...details.profiles, newP] });
-        await botSendSamePanel(
-          incomingChatId,
-          st,
-          `✅ تم إنشاء البروفايل:\n<b>${newP.nameAr}</b>\nاضغط «البروفايلات» لجعله نشطاً على الموقع أو تعديل حساباته.`,
-          { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } },
-        );
+        await botSend(`✅ تم إنشاء البروفايل:\n<b>${newP.nameAr}</b>\nاضغط «البروفايلات» لجعله نشطاً على الموقع أو تعديل حساباته.`, { reply_markup: { inline_keyboard: [[{ text: '👤 البروفايلات', callback_data: 'menu_profiles' }]] } }, incomingChatId);
         return;
       }
     }
@@ -4325,30 +4271,25 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
       const cfg = await loadSiteConfig();
       setByPath(cfg, st.dotPath, input);
       await saveSiteConfig(cfg);
-      await botSendSamePanel(
-        incomingChatId,
-        st,
-        `✅ تم تحديث <b>${st.label}</b>: <code>${input.slice(0, 60)}</code>`,
-        { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } },
-      );
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${input.slice(0, 60)}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: st.backTo || 'menu_site' }]] } });
       return;
     }
 
     if (st.action === 'addFaq') {
       const d = st.data || {};
       if (st.step === 0) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addFaq', step: 1, data: { qAr: input } }));
-        await botSendSamePanel(incomingChatId, st, '✍️ أرسل <b>الجواب بالعربية:</b>', { reply_markup: cancelButton() });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 1, data: { qAr: input } });
+        await botSend('✍️ أرسل <b>الجواب بالعربية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 1) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addFaq', step: 2, data: { ...d, aAr: input } }));
-        await botSendSamePanel(incomingChatId, st, '🇬🇧 أرسل <b>السؤال بالإنجليزية:</b>', { reply_markup: cancelButton() });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 2, data: { ...d, aAr: input } });
+        await botSend('🇬🇧 أرسل <b>السؤال بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 2) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addFaq', step: 3, data: { ...d, qEn: input } }));
-        await botSendSamePanel(incomingChatId, st, '✍️ أرسل <b>الجواب بالإنجليزية:</b>', { reply_markup: cancelButton() });
+        setPendingState(incomingChatId, { action: 'addFaq', step: 3, data: { ...d, qEn: input } });
+        await botSend('✍️ أرسل <b>الجواب بالإنجليزية:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 3) {
@@ -4356,34 +4297,26 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
         const newId = Date.now();
         cfg.faq = [...(cfg.faq || []), { id: newId, qAr: d.qAr, aAr: d.aAr, qEn: d.qEn, aEn: input }];
         await saveSiteConfig(cfg);
-        await botSendSamePanel(incomingChatId, st, `✅ تمت إضافة السؤال:\n🇸🇦 <b>${d.qAr}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الأسئلة الشائعة', callback_data: 'site_faq' }]] } });
+        await botSend(`✅ تمت إضافة السؤال:\n🇸🇦 <b>${d.qAr}</b>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الأسئلة الشائعة', callback_data: 'site_faq' }]] } });
         return;
       }
     }
 
     if (st.action === 'addReview') {
       const d = st.data || {};
-      if (st.step === 0) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addReview', step: 1, data: { nameAr: input } }));
-        await botSendSamePanel(incomingChatId, st, 'أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() });
-        return;
-      }
-      if (st.step === 1) {
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addReview', step: 2, data: { ...d, cityAr: input } }));
-        await botSendSamePanel(incomingChatId, st, '⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() });
-        return;
-      }
+      if (st.step === 0) { setPendingState(incomingChatId, { action: 'addReview', step: 1, data: { nameAr: input } }); await botSend(' أرسل <b>المدينة بالعربية:</b>', { reply_markup: cancelButton() }); return; }
+      if (st.step === 1) { setPendingState(incomingChatId, { action: 'addReview', step: 2, data: { ...d, cityAr: input } }); await botSend('⭐ أرسل <b>عدد النجوم (1-5):</b>', { reply_markup: cancelButton() }); return; }
       if (st.step === 2) {
         const stars = Math.min(5, Math.max(1, Number(input) || 5));
-        setPendingState(incomingChatId, carryPendingUi(st, { action: 'addReview', step: 3, data: { ...d, stars } }));
-        await botSendSamePanel(incomingChatId, st, '✍️ أرسل <b>نص التقييم:</b>', { reply_markup: cancelButton() });
+        setPendingState(incomingChatId, { action: 'addReview', step: 3, data: { ...d, stars } });
+        await botSend('✍️ أرسل <b>نص التقييم:</b>', { reply_markup: cancelButton() });
         return;
       }
       if (st.step === 3) {
         const list = await loadTestimonials();
         const newItem = { id: Date.now(), nameAr: d.nameAr, nameEn: d.nameAr, cityAr: d.cityAr, cityEn: d.cityAr, stars: d.stars, textAr: input, textEn: input };
         await saveTestimonials([...list, newItem]);
-        await botSendSamePanel(incomingChatId, st, `✅ تمت إضافة التقييم:\n⭐ <b>${d.nameAr}</b> — ${'⭐'.repeat(d.stars)}`, { reply_markup: { inline_keyboard: [[{ text: '🔙 التقييمات', callback_data: 'menu_testimonials' }]] } });
+        await botSend(`✅ تمت إضافة التقييم:\n⭐ <b>${d.nameAr}</b> — ${'⭐'.repeat(d.stars)}`, { reply_markup: { inline_keyboard: [[{ text: '🔙 التقييمات', callback_data: 'menu_testimonials' }]] } });
         return;
       }
     }
@@ -4391,14 +4324,14 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
     if (st.action === 'setStat') {
       const val = Number(input);
       if (!Number.isFinite(val) || val < 0) {
-        await botSendSamePanel(incomingChatId, st, '❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() });
+        await botSend('❌ أرسل رقماً صحيحاً موجباً.', { reply_markup: cancelButton() }, incomingChatId);
         setPendingState(incomingChatId, st);
         return;
       }
       const stats = await loadStats();
       stats[st.field] = val;
       await saveStats(stats);
-      await botSendSamePanel(incomingChatId, st, `✅ تم تحديث <b>${st.label}</b>: <code>${val}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الإحصائيات', callback_data: 'menu_stats' }]] } });
+      await botSend(`✅ تم تحديث <b>${st.label}</b>: <code>${val}</code>`, { reply_markup: { inline_keyboard: [[{ text: '🔙 الإحصائيات', callback_data: 'menu_stats' }]] } }, incomingChatId);
       return;
     }
 
@@ -4717,14 +4650,11 @@ const QR_METHOD_MAP = {
   asiahawala: 'asiaHawala.qrImage',
 };
 
-async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profileId = null, panel = null) {
+async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profileId = null) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = msg.chat?.id;
   const fieldPath = QR_METHOD_MAP[methodKey];
-  if (!fieldPath) {
-    await botSendSamePanel(chatId, panel, `❌ طريقة دفع غير معروفة: ${methodKey}`, {});
-    return;
-  }
+  if (!fieldPath) { await botSend(`❌ طريقة دفع غير معروفة: ${methodKey}`, {}, chatId); return; }
   const fileId = msg.photo[msg.photo.length - 1].file_id;
   try {
     const { data: fileData } = await tgGetFile(botToken, fileId);
@@ -4744,14 +4674,9 @@ async function savePhotoAsQr(msg, methodKey, label, backTo = 'menu_edit', profil
     setByPath(prof.methods, fieldPath, localUrl);
     profiles[idx] = prof;
     await savePaymentDetails({ ...details, profiles });
-    await botSendSamePanel(
-      chatId,
-      panel,
-      `✅ تم حفظ باركود <b>${label || methodKey}</b> لبروفايل <b>${prof.nameAr}</b>!`,
-      { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } },
-    );
+    await botSend(`✅ تم حفظ باركود <b>${label || methodKey}</b> لبروفايل <b>${prof.nameAr}</b>!`, { reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: backTo }]] } }, chatId);
   } catch (e) {
-    await botSendSamePanel(chatId, panel, `❌ فشل حفظ الصورة: ${e?.message || e}`, {});
+    await botSend(`❌ فشل حفظ الصورة: ${e?.message || e}`, {}, chatId);
   }
 }
 
@@ -4790,10 +4715,9 @@ async function handlePhotoMessage(msg) {
   const chatId = msg.chat?.id;
   const ps = getPendingState(chatId);
   if (ps?.action === 'awaitPhoto') {
-    const { method, label, backTo, profileId, uiMessageId, uiChatId } = ps;
-    const panel = uiMessageId != null && uiChatId != null ? { uiMessageId, uiChatId } : null;
+    const { method, label, backTo, profileId } = ps;
     setPendingState(chatId, null);
-    await savePhotoAsQr(msg, method, label, backTo || 'menu_edit', profileId, panel);
+    await savePhotoAsQr(msg, method, label, backTo || 'menu_edit', profileId);
     return;
   }
 
