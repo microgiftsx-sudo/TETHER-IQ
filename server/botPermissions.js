@@ -122,7 +122,7 @@ export function getRequiredPermissionForCallback(data) {
 /**
  * @returns {string|null}
  */
-export function getRequiredPermissionForCommand(trimmed, _raw) {
+export function getRequiredPermissionForCommand(trimmed) {
   const t = String(trimmed || '').toLowerCase();
 
   if (t === '/start') return null;

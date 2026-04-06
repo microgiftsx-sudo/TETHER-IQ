@@ -4370,7 +4370,7 @@ async function handleAdminCommand(text, incomingChatId, fromUserId) {
   }
 
   botData = await getBotAdminsData();
-  const cmdPerm = getRequiredPermissionForCommand(trimmed, raw);
+  const cmdPerm = getRequiredPermissionForCommand(trimmed);
   if (cmdPerm && !hasBotPermissionSync(uid, cmdPerm, botData.delegates)) {
     await botSend('⛔ ليست لديك صلاحية لهذا الأمر.', {}, incomingChatId);
     return;
