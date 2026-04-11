@@ -599,6 +599,8 @@ export default function BuyPage() {
                       <img
                         src={pm.fastPay.qrImage}
                         alt="FastPay QR"
+                        width={150}
+                        height={150}
                         onError={() => setFastPayQrFailed(true)}
                         style={{ width: '150px', height: '150px', objectFit: 'contain' }}
                       />
@@ -632,6 +634,8 @@ export default function BuyPage() {
                       <img
                         src={pm.zainCash.qrImage}
                         alt="QR Code"
+                        width={150}
+                        height={150}
                         onError={() => setZainQrFailed(true)}
                         style={{ width: '150px', height: '150px', objectFit: 'contain' }}
                       />
@@ -700,6 +704,8 @@ export default function BuyPage() {
                         <img
                           src={pm.fib.qrImage}
                           alt="FIB QR Code"
+                          width={150}
+                          height={150}
                           onError={() => setFibQrFailed(true)}
                           style={{ width: '150px', height: '150px', objectFit: 'contain' }}
                         />
@@ -744,6 +750,8 @@ export default function BuyPage() {
                         <img
                           src={pm.mastercard.qrImage}
                           alt="MasterCard QR Code"
+                          width={150}
+                          height={150}
                           onError={() => setMastercardQrFailed(true)}
                           style={{ width: '150px', height: '150px', objectFit: 'contain' }}
                         />

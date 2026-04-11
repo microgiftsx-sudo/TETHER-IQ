@@ -395,7 +395,9 @@ export default function ChatWidget({ t, lang }) {
               <input
                 type="text"
                 className="input-control"
+                id="web-chat-visitor-name"
                 placeholder={t.chatNamePlaceholder}
+                aria-label={t.chatNamePlaceholder}
                 value={visitorName}
                 onChange={(e) => setVisitorName(e.target.value)}
                 style={{ fontSize: '0.85rem', padding: '0.45rem 0.6rem' }}
@@ -426,7 +428,7 @@ export default function ChatWidget({ t, lang }) {
                 <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
                 {m.mediaUrl && String(m.mediaType || '').startsWith('image/') ? (
                   <a href={normalizeChatMediaUrl(m.mediaUrl)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8 }}>
-                    <img src={normalizeChatMediaUrl(m.mediaUrl)} alt={m.mediaName || 'media'} style={{ maxWidth: 190, maxHeight: 160, borderRadius: 10, border: '1px solid rgba(148,163,184,.35)' }} />
+                    <img src={normalizeChatMediaUrl(m.mediaUrl)} alt={m.mediaName || 'media'} width={190} height={160} style={{ maxWidth: 190, maxHeight: 160, borderRadius: 10, border: '1px solid rgba(148,163,184,.35)' }} />
                   </a>
                 ) : m.mediaUrl ? (
                   <a href={normalizeChatMediaUrl(m.mediaUrl)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, textDecoration: 'underline' }}>
@@ -455,6 +457,7 @@ export default function ChatWidget({ t, lang }) {
               onChange={(e) => setPickedMedia(e.target.files?.[0] || null)}
               disabled={loading}
               className="web-chat-media-input"
+              aria-label={isRtl ? 'إرفاق ملف من المعرض' : 'Attach file from gallery'}
             />
             <input
               ref={cameraInputRef}
@@ -464,11 +467,12 @@ export default function ChatWidget({ t, lang }) {
               onChange={(e) => setPickedMedia(e.target.files?.[0] || null)}
               disabled={loading}
               className="web-chat-media-input"
+              aria-label={isRtl ? 'التقاط صورة بالكاميرا' : 'Capture photo with camera'}
             />
             {mediaFile ? (
               <div className="web-chat-media-preview-box">
                 {mediaPreviewUrl ? (
-                  <img src={mediaPreviewUrl} alt={mediaFile.name || 'preview'} className="web-chat-media-preview-img" />
+                  <img src={mediaPreviewUrl} alt={mediaFile.name || 'preview'} className="web-chat-media-preview-img" width={72} height={72} />
                 ) : (
                   <div className="web-chat-media-preview-fallback">{isRtl ? 'ملف مرفق' : 'File attached'}</div>
                 )}
@@ -508,7 +512,9 @@ export default function ChatWidget({ t, lang }) {
               </button>
               <input
                 className="input-control web-chat-modern-input"
+                id="web-chat-message-input"
                 placeholder={t.chatPlaceholder}
+                aria-label={t.chatPlaceholder}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 disabled={loading}

@@ -185,7 +185,7 @@ export default function OrderTrackPage() {
             {data && (
               <div className="only-print invoice-pro-print">
                 <div className="invoice-pro-print-head">
-                  <img src="/logo.png" alt="" className="invoice-pro-logo" />
+                  <img src="/logo.png" alt="" className="invoice-pro-logo" width={160} height={48} />
                   <div className="invoice-pro-print-text">
                     <div className="invoice-pro-site">TETHER IQ</div>
                     <div className="invoice-pro-doc">{t.trackInvoicePrintTitle}</div>

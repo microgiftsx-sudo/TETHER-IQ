@@ -42,8 +42,9 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
         
         <form onSubmit={handleNextStep} className="flex flex-col gap-4">
           <div className="input-group">
-            <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.namePlaceholder}</label>
+            <label className="input-label" htmlFor="checkout-full-name" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.namePlaceholder}</label>
             <input
+              id="checkout-full-name"
               type="text"
               className="input-control"
               required
@@ -56,8 +57,9 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
 
           <div className="flex gap-4 flex-wrap">
             <div className="input-group" style={{ flex: 1, minWidth: '200px' }}>
-              <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.selectPayment}</label>
+              <label className="input-label" htmlFor="checkout-payment-method" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.selectPayment}</label>
               <select
+                id="checkout-payment-method"
                 className="input-control"
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
@@ -71,8 +73,9 @@ export default function CheckoutForm({ t, lang, usdtAmount }) {
           </div>
 
           <div className="input-group">
-            <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.walletPlaceholder}</label>
+            <label className="input-label" htmlFor="checkout-wallet" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.walletPlaceholder}</label>
             <input
+              id="checkout-wallet"
               type="text"
               className="input-control"
               required

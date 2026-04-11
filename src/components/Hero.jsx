@@ -82,9 +82,10 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero, network
         </div>
 
         <div className="input-group">
-          <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.youGet}</label>
+          <label className="input-label" htmlFor="hero-usdt-amount" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.youGet}</label>
           <div style={{ position: 'relative' }}>
             <input 
+              id="hero-usdt-amount"
               type="number" 
               className="input-control" 
               value={usdtAmount} 
@@ -113,9 +114,10 @@ export default function Hero({ t, lang, usdtAmount, setUsdtAmount, hero, network
         </div>
 
         <div className="input-group">
-          <label className="input-label" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.youSend}</label>
+          <label className="input-label" htmlFor="hero-iqd-amount" style={{ textAlign: isRtl ? 'right' : 'left' }}>{t.youSend}</label>
           <div style={{ position: 'relative' }}>
             <input 
+              id="hero-iqd-amount"
               type="text" 
               inputMode="numeric"
               className="input-control" 

@@ -208,7 +208,9 @@ function Logo({ navigate }) {
       <img
         src="/logo.png"
         alt="TETHER IQ"
-        style={{ height: '48px', width: 'auto', display: 'block', flexShrink: 0 }}
+        width={160}
+        height={48}
+        style={{ height: '48px', width: 'auto', maxWidth: '160px', objectFit: 'contain', display: 'block', flexShrink: 0 }}
       />
     </button>
   );
