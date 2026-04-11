@@ -372,6 +372,30 @@ body::after {
   opacity: 0.88;
 }
 
+/* صندوق ثابت للشعار: يحجز المساحة فوراً ويمنع تمدد الصورة لجزء من الثانية عند الرفرش */
+.header-logo-slot {
+  display: block;
+  width: 160px;
+  height: 48px;
+  flex-shrink: 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.header-logo-slot picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.header-logo-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
 .header-mobile-actions {
   display: none;
   align-items: center;
