@@ -102,8 +102,10 @@ export default function ChatWidget({ t, lang }) {
   }, []);
 
   const scrollBottom = () => {
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      const el = listRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   };
 
   const lockName = useCallback((name) => {

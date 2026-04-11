@@ -9,6 +9,28 @@ export default function Header({ t, lang, toggleLang, links }) {
   const isRtl = lang === 'ar';
   const navigate = useNavigate();
   const announceHeightRef = useRef(56);
+  const announcementElRef = useRef(null);
+
+  useEffect(() => {
+    const el = announcementElRef.current;
+    if (!el) return undefined;
+
+    const applyHeight = (h) => {
+      const next = Math.max(40, Math.round(h) || 56);
+      if (announceHeightRef.current === next) return;
+      announceHeightRef.current = next;
+      setAnnouncementHeight(next);
+    };
+
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect?.height;
+      if (h != null && h > 0) {
+        requestAnimationFrame(() => applyHeight(h));
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -127,11 +149,7 @@ export default function Header({ t, lang, toggleLang, links }) {
     <header className="header-sticky">
       <div
         className={`header-announcement${effectiveAnnouncementHidden ? ' header-announcement--hidden' : ''}`}
-        ref={(el) => {
-          if (!el) return;
-          announceHeightRef.current = el.offsetHeight || announceHeightRef.current;
-          setAnnouncementHeight(announceHeightRef.current);
-        }}
+        ref={announcementElRef}
         style={
           effectiveAnnouncementHidden
             ? undefined
