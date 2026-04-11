@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import FormData from 'form-data';
 import path from 'node:path';
@@ -319,6 +320,7 @@ function applySecurityHeaders(req, res, next) {
   next();
 }
 app.use(applySecurityHeaders);
+app.use(compression({ threshold: 1024 }));
 
 const corsOrigins = String(process.env.CORS_ORIGINS || '')
   .split(',')
@@ -349,7 +351,18 @@ function checkAdminCrmAuth(req) {
 
 if (IS_PROD) {
   const distPath = path.join(PROJECT_ROOT, 'dist');
-  app.use(express.static(distPath));
+  app.use(
+    express.static(distPath, {
+      setHeaders(res, filePath) {
+        const norm = filePath.replace(/\\/g, '/');
+        if (norm.includes('/assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (norm.endsWith('/index.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
 }
 const ALLOWED_NETWORKS = new Set(['TRC20', 'ERC20', 'BEP20']);
 
@@ -4911,6 +4924,7 @@ if (IS_PROD) {
     if (req.path.startsWith('/assets/')) {
       return res.status(404).type('text/plain; charset=utf-8').send('Asset not found — upload full dist/ or hard-refresh');
     }
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }

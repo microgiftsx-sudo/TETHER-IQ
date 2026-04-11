@@ -1,16 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import BuyPage from './pages/BuyPage';
-import OrderTrackPage from './pages/OrderTrackPage';
-import MyOrdersPage from './pages/MyOrdersPage';
-import LegalPage from './pages/LegalPage';
-import AdminCrmPage from './pages/AdminCrmPage';
-import SellerPage from './pages/SellerPage';
 import VisitTracker from './components/VisitTracker';
-import ChatWidget from './components/ChatWidget';
 import { getSiteConfig } from './api';
 import { translations } from './translations';
+
+const BuyPage = lazy(() => import('./pages/BuyPage'));
+const OrderTrackPage = lazy(() => import('./pages/OrderTrackPage'));
+const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
+const AdminCrmPage = lazy(() => import('./pages/AdminCrmPage'));
+const SellerPage = lazy(() => import('./pages/SellerPage'));
+const ChatWidget = lazy(() => import('./components/ChatWidget'));
 
 function MaintenancePage({ messageAr, messageEn }) {
   const [lang, setLang] = useState('ar');
@@ -40,10 +41,30 @@ function MaintenancePage({ messageAr, messageEn }) {
   );
 }
 
+function RouteFallback() {
+  return (
+    <div
+      className="app-root"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '50vh',
+      }}
+    >
+      <span className="app-shell-loading-spinner" aria-label="Loading" />
+    </div>
+  );
+}
+
 export default function App() {
   const [siteConfig, setSiteConfig] = useState(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
+  const [chatReady, setChatReady] = useState(false);
   const t = translations[lang];
 
   useEffect(() => {
@@ -57,6 +78,28 @@ export default function App() {
       .then(cfg => { setSiteConfig(cfg); setConfigLoaded(true); })
       .catch(() => setConfigLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!configLoaded) return;
+    const maintenance = siteConfig?.maintenance;
+    if (maintenance?.enabled) return;
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) setChatReady(true);
+    };
+    let id;
+    const useRic = typeof requestIdleCallback !== 'undefined';
+    if (useRic) {
+      id = requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      id = setTimeout(run, 0);
+    }
+    return () => {
+      cancelled = true;
+      if (useRic) cancelIdleCallback(id);
+      else clearTimeout(id);
+    };
+  }, [configLoaded, siteConfig?.maintenance]);
 
   if (!configLoaded) {
     return (
@@ -84,20 +127,26 @@ export default function App() {
   return (
     <div className="app-root">
       <VisitTracker />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/buy" element={<BuyPage />} />
-        <Route path="/track" element={<OrderTrackPage />} />
-        <Route path="/my-orders" element={<MyOrdersPage />} />
-        <Route path="/privacy" element={<LegalPage doc="privacy" />} />
-        <Route path="/terms" element={<LegalPage doc="terms" />} />
-        <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
-        <Route path="/about" element={<LegalPage doc="about" />} />
-        <Route path="/admin/crm" element={<AdminCrmPage />} />
-        <Route path="/seller" element={<SellerPage />} />
-        <Route path="*" element={<HomePage />} />
-      </Routes>
-      <ChatWidget t={t} lang={lang} />
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/buy" element={<BuyPage />} />
+          <Route path="/track" element={<OrderTrackPage />} />
+          <Route path="/my-orders" element={<MyOrdersPage />} />
+          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/terms" element={<LegalPage doc="terms" />} />
+          <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
+          <Route path="/about" element={<LegalPage doc="about" />} />
+          <Route path="/admin/crm" element={<AdminCrmPage />} />
+          <Route path="/seller" element={<SellerPage />} />
+          <Route path="*" element={<HomePage />} />
+        </Routes>
+      </Suspense>
+      {chatReady ? (
+        <Suspense fallback={null}>
+          <ChatWidget t={t} lang={lang} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
