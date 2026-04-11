@@ -185,7 +185,10 @@ export default function OrderTrackPage() {
             {data && (
               <div className="only-print invoice-pro-print">
                 <div className="invoice-pro-print-head">
-                  <img src="/logo.png" alt="" className="invoice-pro-logo" width={160} height={48} />
+                  <picture>
+                    <source type="image/webp" srcSet="/logo.webp" />
+                    <img src="/logo.png" alt="" className="invoice-pro-logo" width={160} height={48} />
+                  </picture>
                   <div className="invoice-pro-print-text">
                     <div className="invoice-pro-site">TETHER IQ</div>
                     <div className="invoice-pro-doc">{t.trackInvoicePrintTitle}</div>
@@ -199,7 +202,10 @@ export default function OrderTrackPage() {
 
             <div className="no-print invoice-screen-head">
               <div className="invoice-card-brand">
-                <img src="/logo.png" alt="" width={44} height={44} style={{ objectFit: 'contain' }} />
+                <picture>
+                  <source type="image/webp" srcSet="/logo.webp" />
+                  <img src="/logo.png" alt="" width={44} height={44} style={{ objectFit: 'contain' }} />
+                </picture>
                 <div>
                   <div className="invoice-card-brand-name">TETHER IQ</div>
                   <div className="invoice-card-brand-sub text-muted text-sm">{t.trackInvoicePrintTitle}</div>

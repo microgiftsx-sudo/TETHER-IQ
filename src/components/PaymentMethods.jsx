@@ -2,18 +2,21 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getPaymentDetails } from '../api';
 
 import logoFastpay from '../assets/payment-logos/fastpay.png';
+import logoFastpayWebp from '../assets/payment-logos/fastpay.webp';
 import logoZaincash from '../assets/payment-logos/zaincash.png';
+import logoZaincashWebp from '../assets/payment-logos/zaincash.webp';
 import logoMastercard from '../assets/payment-logos/mastercard.svg';
 import logoFib from '../assets/payment-logos/fib.png';
+import logoFibWebp from '../assets/payment-logos/fib.webp';
 import logoAsia from '../assets/payment-logos/asia-hawala.jpg';
+import logoAsiaWebp from '../assets/payment-logos/asia-hawala.webp';
 
 /** شعارات حقيقية — مستوردة عبر Vite (مسار مضمون في dev والإنتاج) */
-const LOGO_SRC = {
-  fastPay: logoFastpay,
-  zainCash: logoZaincash,
-  mastercard: logoMastercard,
-  fib: logoFib,
-  asiaHawala: logoAsia,
+const LOGO_RASTER = {
+  fastPay: { webp: logoFastpayWebp, fallback: logoFastpay, mime: 'image/png' },
+  zainCash: { webp: logoZaincashWebp, fallback: logoZaincash, mime: 'image/png' },
+  fib: { webp: logoFibWebp, fallback: logoFib, mime: 'image/png' },
+  asiaHawala: { webp: logoAsiaWebp, fallback: logoAsia, mime: 'image/jpeg' },
 };
 
 const ALL = [
@@ -55,15 +58,30 @@ export default function PaymentMethods({ t, lang }) {
         {visible.map((m) => (
           <div key={m.key} className="glass-panel payment-card">
             <div className="payment-card__logo">
-              <img
-                className="payment-card__img"
-                src={LOGO_SRC[m.key]}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                width={120}
-                height={120}
-              />
+              {m.key === 'mastercard' ? (
+                <img
+                  className="payment-card__img"
+                  src={logoMastercard}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width={120}
+                  height={120}
+                />
+              ) : (
+                <picture>
+                  <source type="image/webp" srcSet={LOGO_RASTER[m.key].webp} />
+                  <img
+                    className="payment-card__img"
+                    src={LOGO_RASTER[m.key].fallback}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    width={120}
+                    height={120}
+                  />
+                </picture>
+              )}
             </div>
             <span className="payment-card__label">{isRtl ? m.nameAr : m.name}</span>
           </div>

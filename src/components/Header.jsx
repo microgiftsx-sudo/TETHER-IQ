@@ -205,15 +205,18 @@ function Logo({ navigate }) {
       className="header-logo"
       aria-label="TETHER IQ - Home"
     >
-      <img
-        src="/logo.png"
-        alt="TETHER IQ"
-        width={160}
-        height={48}
-        fetchPriority="high"
-        decoding="async"
-        style={{ height: '48px', width: 'auto', maxWidth: '160px', objectFit: 'contain', display: 'block', flexShrink: 0 }}
-      />
+      <picture>
+        <source type="image/webp" srcSet="/logo.webp" />
+        <img
+          src="/logo.png"
+          alt="TETHER IQ"
+          width={160}
+          height={48}
+          fetchPriority="high"
+          decoding="async"
+          style={{ height: '48px', width: 'auto', maxWidth: '160px', objectFit: 'contain', display: 'block', flexShrink: 0 }}
+        />
+      </picture>
     </button>
   );
 }
