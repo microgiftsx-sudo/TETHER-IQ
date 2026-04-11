@@ -3,7 +3,6 @@ import Steps from '../components/Steps';
 import PaymentMethods from '../components/PaymentMethods';
 import FAQ from '../components/FAQ';
 import ContactSection from '../components/ContactSection';
-import Footer from '../components/Footer';
 import LiveActivity from '../components/LiveActivity';
 import TrustStats from '../components/TrustStats';
 import Testimonials from '../components/Testimonials';
@@ -33,7 +32,6 @@ export default function HomePageBelowFold({ t, lang, siteConfig }) {
         <ContactSection t={t} lang={lang} contactLink={siteConfig?.links?.contact} />
       </div>
       <LiveActivity t={t} lang={lang} />
-      <Footer t={t} lang={lang} />
     </>
   );
 }

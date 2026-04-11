@@ -6,6 +6,7 @@ import { translations } from '../translations';
 import { useSiteConfig } from '../context/SiteConfigContext';
 import Header from '../components/Header';
 import Hero from '../components/Hero';
+import Footer from '../components/Footer';
 import StickyMobileCTA from '../components/StickyMobileCTA';
 
 const HomePageBelowFold = lazy(() => import('./HomePageBelowFold'));
@@ -112,6 +113,7 @@ export default function HomePage() {
         </Suspense>
       </main>
 
+      <Footer t={t} lang={lang} />
       <StickyMobileCTA t={t} lang={lang} rate={rate} usdtAmount={usdtAmount} />
     </div>
   );

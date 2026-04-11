@@ -42,11 +42,7 @@ export default function Footer({ t, lang = 'ar' }) {
               <Link to="/about" className="site-footer__link">
                 {t.navAbout}
               </Link>
-            </div>
-            <div className="site-footer__cluster site-footer__cluster--orders">
-              <span className="site-footer__sep site-footer__sep--pipe" aria-hidden>
-                |
-              </span>
+              <span className="site-footer__sep" aria-hidden>·</span>
               <Link to="/my-orders" className="site-footer__link site-footer__link--emphasis">
                 {t.navMyOrders}
               </Link>
