@@ -30,7 +30,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preload" href="/logo.webp" as="image" type="image/webp" fetchpriority="high" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;500;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;500;700;800&display=swap&subset=arabic,latin"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"
@@ -38,12 +38,15 @@
     <noscript>
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;500;700;800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;500;700;800&display=swap&subset=arabic,latin"
       />
     </noscript>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;background:#030712;color-scheme:dark">
+    <!-- طبقة أول لون قبل تنفيذ JS/React — تُستبدل عند التركيب (تحسين FCP على الجوال) -->
+    <div id="root">
+      <div class="app-fcp-shell" style="min-height:100vh;background:#030712" aria-hidden="true"></div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
