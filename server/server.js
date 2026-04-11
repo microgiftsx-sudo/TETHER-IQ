@@ -1023,6 +1023,7 @@ app.get('/api/admin/telegram-probe', async (req, res) => {
 
 app.get('/api/site-config', async (_req, res) => {
   try {
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
     res.json(await loadSiteConfig());
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });

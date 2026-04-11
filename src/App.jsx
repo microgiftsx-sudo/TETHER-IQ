@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import VisitTracker from './components/VisitTracker';
 import { getSiteConfig } from './api';
 import { translations } from './translations';
+import { SiteConfigContext } from './context/SiteConfigContext';
 
 const BuyPage = lazy(() => import('./pages/BuyPage'));
 const OrderTrackPage = lazy(() => import('./pages/OrderTrackPage'));
@@ -62,7 +63,6 @@ function RouteFallback() {
 
 export default function App() {
   const [siteConfig, setSiteConfig] = useState(null);
-  const [configLoaded, setConfigLoaded] = useState(false);
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'ar');
   const [chatReady, setChatReady] = useState(false);
   const t = translations[lang];
@@ -75,14 +75,12 @@ export default function App() {
 
   useEffect(() => {
     getSiteConfig()
-      .then(cfg => { setSiteConfig(cfg); setConfigLoaded(true); })
-      .catch(() => setConfigLoaded(true));
+      .then(setSiteConfig)
+      .catch(() => setSiteConfig(null));
   }, []);
 
   useEffect(() => {
-    if (!configLoaded) return;
-    const maintenance = siteConfig?.maintenance;
-    if (maintenance?.enabled) return;
+    if (siteConfig?.maintenance?.enabled) return;
     let cancelled = false;
     const run = () => {
       if (!cancelled) setChatReady(true);
@@ -99,54 +97,41 @@ export default function App() {
       if (useRic) cancelIdleCallback(id);
       else clearTimeout(id);
     };
-  }, [configLoaded, siteConfig?.maintenance]);
+  }, [siteConfig?.maintenance?.enabled]);
 
-  if (!configLoaded) {
-    return (
-      <div className="app-root" role="status" aria-live="polite" aria-busy="true" style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-      }}>
-        <span className="app-shell-loading-spinner" aria-label="Loading" />
-      </div>
-    );
-  }
-
-  const maintenance = siteConfig?.maintenance;
-
-  if (maintenance?.enabled) {
+  if (siteConfig?.maintenance?.enabled) {
     return (
       <div className="app-root">
-        <MaintenancePage messageAr={maintenance.messageAr} messageEn={maintenance.messageEn} />
+        <MaintenancePage messageAr={siteConfig.maintenance.messageAr} messageEn={siteConfig.maintenance.messageEn} />
       </div>
     );
   }
 
   return (
-    <div className="app-root">
-      <VisitTracker />
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/buy" element={<BuyPage />} />
-          <Route path="/track" element={<OrderTrackPage />} />
-          <Route path="/my-orders" element={<MyOrdersPage />} />
-          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
-          <Route path="/terms" element={<LegalPage doc="terms" />} />
-          <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
-          <Route path="/about" element={<LegalPage doc="about" />} />
-          <Route path="/admin/crm" element={<AdminCrmPage />} />
-          <Route path="/seller" element={<SellerPage />} />
-          <Route path="*" element={<HomePage />} />
-        </Routes>
-      </Suspense>
-      {chatReady ? (
-        <Suspense fallback={null}>
-          <ChatWidget t={t} lang={lang} />
+    <SiteConfigContext.Provider value={siteConfig}>
+      <div className="app-root">
+        <VisitTracker />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/buy" element={<BuyPage />} />
+            <Route path="/track" element={<OrderTrackPage />} />
+            <Route path="/my-orders" element={<MyOrdersPage />} />
+            <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+            <Route path="/terms" element={<LegalPage doc="terms" />} />
+            <Route path="/disclaimer" element={<LegalPage doc="disclaimer" />} />
+            <Route path="/about" element={<LegalPage doc="about" />} />
+            <Route path="/admin/crm" element={<AdminCrmPage />} />
+            <Route path="/seller" element={<SellerPage />} />
+            <Route path="*" element={<HomePage />} />
+          </Routes>
         </Suspense>
-      ) : null}
-    </div>
+        {chatReady ? (
+          <Suspense fallback={null}>
+            <ChatWidget t={t} lang={lang} />
+          </Suspense>
+        ) : null}
+      </div>
+    </SiteConfigContext.Provider>
   );
 }
